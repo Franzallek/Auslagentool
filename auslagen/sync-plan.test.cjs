@@ -1,0 +1,22 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {plan}=require('./sync-plan.js');
+const row=(hash,revision='etag-1')=>({id:'receipt-1',hash,revision});
+const input=(extra={})=>({account:'verified-A',boundAccount:'verified-A',local:[],remote:[],base:[],...extra});
+let count=0;
+function test(name,fn){fn();count++;process.stdout.write('PASS '+name+'\n');}
+test('missing verified account rejected',()=>assert.throws(()=>plan(input({account:''})),/Verified/));
+test('account switch rejected',()=>assert.throws(()=>plan(input({boundAccount:'verified-B'})),/mismatch/));
+test('old local data need explicit adoption',()=>assert.throws(()=>plan(input({boundAccount:null,local:[row('a')]})),/adoption/));
+test('approved old local data may be created',()=>assert.equal(plan(input({boundAccount:null,adoptLocal:true,local:[row('a')]}))[0].type,'create'));
+test('other device downloads receipt',()=>assert.equal(plan(input({remote:[row('a')]}))[0].type,'download'));
+test('local disappearance never deletes remote',()=>assert.equal(plan(input({remote:[row('a')],base:[row('a')]}))[0].type,'download'));
+test('equal hashes ignore device timestamps',()=>assert.equal(plan(input({local:[{...row('a'),updatedAt:'2099'}],remote:[{...row('a'),updatedAt:'2000'}]}))[0].type,'unchanged'));
+test('local change carries expected remote revision',()=>{const a=plan(input({local:[row('b')],remote:[row('a','etag-8')],base:[row('a')]}))[0];assert.equal(a.type,'update');assert.equal(a.expectedRemoteRevision,'etag-8');});
+test('remote change downloads',()=>assert.equal(plan(input({local:[row('a')],remote:[row('b')],base:[row('a')]}))[0].type,'download'));
+test('two offline edits keep both versions',()=>{const a=plan(input({local:[row('b')],remote:[row('c')],base:[row('a')]}))[0];assert.equal(a.type,'conflict');assert.equal(a.local.hash,'b');assert.equal(a.remote.hash,'c');});
+test('no shared baseline means conflict',()=>assert.equal(plan(input({local:[row('a')],remote:[row('b')]}))[0].type,'conflict'));
+test('missing known cloud revision is not recreated',()=>assert.equal(plan(input({local:[row('a')],base:[row('a')]}))[0].type,'conflict'));
+test('duplicate IDs rejected',()=>assert.throws(()=>plan(input({remote:[row('a'),row('b')]})),/Duplicate/));
+test('plan does not mutate inputs',()=>{const x=input({local:[row('b')],remote:[row('a')],base:[row('a')]});const before=JSON.stringify(x);plan(x);assert.equal(JSON.stringify(x),before);});
+process.stdout.write(count+' planner tests passed.\n');
