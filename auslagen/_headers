@@ -1,0 +1,10 @@
+# Wirkt nur bei Hostern mit Header-Unterstuetzung (z. B. Cloudflare Pages, Netlify).
+# Auf GitHub Pages werden diese Header NICHT ausgeliefert.
+# CSP zuerst als Report-Only testen, erst nach erfolgreichem Test scharf schalten.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
