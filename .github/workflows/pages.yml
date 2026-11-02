@@ -1,4 +1,4 @@
-name: Auslagen-App veroeffentlichen
+name: Auslagen-App pruefen und veroeffentlichen
 
 on:
   push:
@@ -15,7 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax und Parser-Test
+        run: |
+          node --check auslagen/parser.js
+          node --check auslagen/sw.js
+          node auslagen/parser.test.cjs > /dev/null
+          node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');fs.writeFileSync('/tmp/app.js',h.slice(h.lastIndexOf('<script>')+8,h.lastIndexOf('</script>')))"
+          node --check /tmp/app.js
+      - name: Schluessel-Suche in ausgelieferten Dateien
+        run: |
+          if grep -rEn "sk_live|sk_test|service_role|Bearer |api[_-]?key|BEGIN (RSA|PRIVATE)|ghp_|AKIA[0-9A-Z]{16}" index.html auslagen --include=*.html --include=*.js --include=*.cjs --include=*.webmanifest; then echo "Verdaechtiger Treffer"; exit 1; fi
+      - name: Altlasten-Suche
+        run: |
+          if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js; then echo "Altlast gefunden"; exit 1; fi
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -26,8 +48,9 @@ jobs:
         run: |
           mkdir _site
           cp -r auslagen/. _site/
+          cp index.html _site/index.html
           cp -r vendor _site/vendor
-          rm -f _site/parser.test.cjs _site/setup-vendor.mjs _site/setup-vendor.sh
+          rm -f _site/parser.test.cjs _site/setup-vendor.mjs _site/setup-vendor.sh _site/_headers _site/README.md
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
