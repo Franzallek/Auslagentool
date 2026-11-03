@@ -28,8 +28,8 @@ t('pdf equals serialized layout',()=>{const opt={measure,signature:SG};const a=R
 t('image primitive only with signature',()=>{assert.equal(R.layoutPages(rep,{measure,signature:SG}).flat().filter(p=>p.t==='img').length,1);assert.equal(R.layoutPages(rep,{measure,signature:null}).flat().filter(p=>p.t==='img').length,0)});
 const pdf=R.buildPdf(rep,{measure,signature:SG});
 t('pdf header and trailer',()=>{const s=Buffer.from(pdf).toString('latin1');assert(s.startsWith('%PDF-1.4'));assert(s.trimEnd().endsWith('%%EOF'))});
-fs.writeFileSync(process.argv[2]||'/tmp/one.pdf',pdf);
+if(process.argv[2])fs.writeFileSync(process.argv[2],pdf);
 const many=[];for(let i=0;i<47;i++)many.push(rec('2026-09-'+String(1+i%28).padStart(2,'0'),'Anbieter '+i+' mit sehr langem Namen und Adresse, Musterstraße 123456789, Beispielstadt',1000+i,190,1190,'19'));
 const big=R.buildReport(many.map(r=>({...r,gross:r.net+r.tax})),'Müller (Test)','2026-10-02');
-fs.writeFileSync(process.argv[3]||'/tmp/many.pdf',R.buildPdf(big,{measure,signature:null}));
+if(process.argv[3])fs.writeFileSync(process.argv[3],R.buildPdf(big,{measure,signature:null}));
 console.log(n+' report tests passed');

@@ -1,31 +1,42 @@
 # Auslagentool
 
-Privates Werkzeug zum Erfassen von Auslagenbelegen. Foto oder Bild wählen, Text lokal auslesen (Tesseract.js, Deutsch), Felder prüfen, als CSV exportieren. Die Daten bleiben im Browser des Geräts (IndexedDB). Keine Cloud, keine Cookies, kein Tracking.
+Privates Werkzeug zum Erfassen von Auslagenbelegen. Die Standard-Speicherung erfolgt lokal im Browser (IndexedDB); Texterkennung und PDF-Erstellung laufen auf dem Gerät. Die App enthält außerdem einen ausdrücklich manuell gestarteten Google-Drive-Abgleich für Testdaten. Dieser Entwicklungsabgleich ist nicht für echte Belege freigegeben.
 
-Status: nicht für die Öffentlichkeit freigegeben. Die Seite ist per Meta-Tag auf noindex gesetzt.
+## Status und Auslieferung
+
+Das Projekt ist nicht für die Öffentlichkeit freigegeben. Der Workflow für `preview/once` veröffentlicht bei jedem Push auf diesen Branch eine GitHub-Pages-Vorschau ohne Zugriffssperre. `noindex` verhindert keine Zugriffe und ist kein Datenschutz- oder Zugriffsschutz. Es wurde in dieser Arbeit nichts gepusht oder veröffentlicht.
+
+Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. `.github/workflows/pages.yml` führt Prüfungen aus, deployt aber nicht. `.github/workflows/preview.yml` deployt ausschließlich `preview/once`.
+
+## Belegkopien als Sammel-PDF
+
+Unter „Meine Auslagen“ die gewünschten Belege markieren und „Belegkopien als Sammel-PDF“ wählen. Das PDF enthält nur die zugehörigen Bildseiten: jedes Bild als eigene Seite und bei Original-PDF-Anhängen jede PDF-Seite. Die Erstellung erfolgt lokal; es werden keine Belege hochgeladen und Bearbeitungsstände oder gespeicherte Dateien nicht verändert. Fehlt bei einem ausgewählten Beleg eine Datei oder ist eine Datei nicht lesbar, wird kein unvollständiges PDF erzeugt. Zum Schutz vor Speicherüberlastung gelten Grenzen von 50 MB ausgewählten Quelldateien, 80 MB PDF-Ausgabe und 250 Seiten; bei Überschreitung wird der Export mit einer Fehlermeldung abgebrochen.
+
+Der bestehende Export „Erstattung erstellen (PDF + CSV)“ sowie CSV- und JSON-Sicherungen bleiben davon getrennt.
 
 ## Struktur
 
-- `auslagen/`: App (index.html, parser.js, sw.js, Manifest, Icons, 404.html)
-- `vendor/`: lokale Erkennungsdateien (Tesseract.js 5.1.1, deutsche Sprachdaten). Keine Drittanbieter-Aufrufe zur Laufzeit.
-- `.github/workflows/pages.yml`: baut aus `auslagen/` und `vendor/` eine Seite und veröffentlicht sie
+- `index.html`: tatsächlich ausgelieferte App-Einstiegsseite
+- `auslagen/`: Parser, lokale PDF-/OCR-Bibliotheken, Service Worker, Synchronisierung und Exportlogik
+- `vendor/`: lokale OCR-Dateien; der Preview-Build ergänzt die PDF.js-Dateien aus `auslagen/vendor/`
+- `.github/workflows/preview.yml`: Prüfungen und Vorschau-Deployment ausschließlich für `preview/once`
+- `.github/workflows/pages.yml`: Entwicklungsprüfungen ohne Deployment
 
-## Deploy (GitHub Pages)
+## Tests
 
-1. Settings, Pages: Source auf „GitHub Actions“ stellen.
-2. Settings, Pages: „Enforce HTTPS“ aktivieren.
-3. Push auf `main` startet den Workflow (oder Actions, „Run workflow“).
-4. Aufruf: https://franzallek.github.io/Auslagentool/
+Mit Node.js aus dem Repository-Root:
 
-## Erkennungsdateien erneuern
+- `node scripts/check-inline.cjs index.html`
+- `node scripts/check-inline.cjs auslagen/index.html`
+- `node auslagen/parser.test.cjs`
+- `node auslagen/sync.test.cjs`
+- `node auslagen/sync-plan.test.cjs`
+- `node auslagen/report.test.cjs`
+- `node auslagen/receipt-pdf.test.cjs`
+- `node auslagen/pdfimport.test.cjs`
 
-Im Ordner `vendor/` liegen Tesseract.js, die vier Rechenmodule (tesseract-core*.wasm.js) und `lang/deu.traineddata.gz`. Bezug: npm-Pakete `tesseract.js` und `tesseract.js-core` (Version 5.1.1) sowie die Sprachdaten von tessdata.projectnaptha.com. Nach einem Update die Version im Service Worker (`CACHE` in sw.js) hochzählen.
-
-## Test
-
-- Auswertungslogik: `node auslagen/parser.test.cjs`
-- Offline: einmal online öffnen, Beleg auslesen, in der App den Offline-Check ausführen, dann Flugmodus.
+Die Browseroberfläche und die Wiederherstellung im Offline-/Flugmodus müssen zusätzlich auf den Zielgeräten geprüft werden. Diese lokale Reparatur ersetzt keine Go-Live-Freigabe.
 
 ## Grenzen
 
-Keine Anmeldung, keine Synchronisierung, keine Einreichung, keine revisionssichere Archivierung. PDFs werden nicht ausgelesen. Sicherung nur manuell per JSON-Export. GitHub Pages kann keine eigenen HTTP-Header senden; die Vorlage `auslagen/_headers` gilt nur bei anderen Hostern.
+Keine revisionssichere Archivierung und keine tatsächliche Einreichung. Gespeicherte Fotos können verkleinerte JPEG-Kopien sein; eine JSON-Sicherung enthält Rechnungsdaten und hinterlegte Dateien. PDF.js und Tesseract werden lokal aus den mitgelieferten Dateien geladen. GitHub Pages kann keine eigenen HTTP-Header senden; `auslagen/_headers` gilt nur bei Hostern, die solche Dateien unterstützen.

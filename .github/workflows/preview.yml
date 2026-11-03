@@ -25,12 +25,15 @@ jobs:
           node --check auslagen/sync-config.js
           node --check auslagen/sync-plan.js
           node --check auslagen/report.js
+          node --check auslagen/receipt-pdf.js
           node --check auslagen/pdfimport.js
           node scripts/check-inline.cjs index.html
+          node scripts/check-inline.cjs auslagen/index.html
           node auslagen/parser.test.cjs > /dev/null
           node auslagen/sync.test.cjs
           node auslagen/sync-plan.test.cjs
           node auslagen/report.test.cjs
+          node auslagen/receipt-pdf.test.cjs
           node auslagen/pdfimport.test.cjs
       - name: Tesseract-Integritaet und Schluessel-Suche
         shell: bash
@@ -66,7 +69,7 @@ jobs:
           PY
       - name: Altlasten-Suche
         run: |
-          if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js auslagen/sync.js auslagen/report.js; then echo "Altlast gefunden"; exit 1; fi
+          if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js auslagen/sync.js auslagen/report.js auslagen/receipt-pdf.js; then echo "Altlast gefunden"; exit 1; fi
   deploy:
     needs: checks
     runs-on: ubuntu-latest
