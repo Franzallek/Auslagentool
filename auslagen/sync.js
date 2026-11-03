@@ -83,7 +83,7 @@ async function removeReceiptCopies(receipts){
  busy=true;
  try{
   const saved=readSyncState();
-  const confirmLocal=message=>confirm('PDF wurde erstellt. Die ausgewählten Belege und Bilder jetzt dauerhaft von diesem Gerät löschen?\n\n'+message+'\n\nDiese lokale Löschung kann nicht rückgängig gemacht werden. Die PDF bleibt erhalten.');
+  const confirmLocal=message=>confirm('Die ausgewählten Belege und Bilder jetzt dauerhaft von diesem Gerät löschen?\n\n'+message+'\n\nDiese lokale Löschung kann nicht rückgängig gemacht werden.');
   if(!saved?.vault){const confirmed=confirmLocal('Es ist kein Google Drive zugeordnet. Cloud-Kopien werden nicht gelöscht.');if(confirmed){const cloudPurged={...(saved?.cloudPurged||{})};for(const receipt of receipts)cloudPurged[receipt.id]=true;localStorage.setItem(KEY,JSON.stringify({...saved,cloudPurged}));}return{confirmed,deletedVersions:0,cloudSkipped:true,message:confirmed?'Nur lokale Belege gelöscht; Cloud-Kopien wurden nicht gelöscht.':'Abgebrochen; lokale Belege bleiben erhalten. Keine Drive-Zuordnung.'};}
   await authorize();
   const account=await googleAccount();
@@ -91,7 +91,7 @@ async function removeReceiptCopies(receipts){
   const io={remote,hash,state:{load:readSyncState,save:s=>localStorage.setItem(KEY,JSON.stringify(s))},confirm:({receipts:selectedReceipts,cloudReceipts,versions})=>{
    const labels=selectedReceipts.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
    const cloudLabels=cloudReceipts.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
-   return confirm('PDF wurde erstellt. Ausgewählte Belege und Bilder dauerhaft löschen?\n\nAuf diesem Gerät:\n'+labels+'\n\nIm verbundenen Google Drive:\n'+(cloudLabels||'Keine Cloud-Kopien gefunden.')+'\n\n'+selectedReceipts.length+' lokale Beleg(e), '+cloudReceipts.length+' Cloud-Beleg(e) und '+versions+' Cloud-Version(en) werden endgültig gelöscht. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass entfernte Belege erneut synchronisiert werden. Die heruntergeladene PDF bleibt erhalten. Andere Geräte können noch lokale Kopien besitzen.');
+   return confirm('Ausgewählte Belege und Bilder dauerhaft löschen?\n\nAuf diesem Gerät:\n'+labels+'\n\nIm verbundenen Google Drive:\n'+(cloudLabels||'Keine Cloud-Kopien gefunden.')+'\n\n'+selectedReceipts.length+' lokale Beleg(e), '+cloudReceipts.length+' Cloud-Beleg(e) und '+versions+' Cloud-Version(en) werden endgültig gelöscht. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass entfernte Belege erneut synchronisiert werden. Andere Geräte können noch lokale Kopien besitzen.');
   }};
   const result=await purgeReceipts(io,receipts);
   if(result.cancelled)return{...result,message:'Abgebrochen; lokale und Cloud-Belege bleiben erhalten.'};
