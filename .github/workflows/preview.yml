@@ -28,16 +28,18 @@ jobs:
           node --check auslagen/sync.js
           node --check auslagen/sync-config.js
           node --check auslagen/sync-plan.js
+          node --check auslagen/report.js
           node scripts/check-inline.cjs index.html
           node auslagen/parser.test.cjs > /dev/null
           node auslagen/sync.test.cjs
           node auslagen/sync-plan.test.cjs
+          node auslagen/report.test.cjs
       - name: Schluessel-Suche in ausgelieferten Dateien
         run: |
           if grep -rEn "sk_live|sk_test|service_role|Bearer [A-Za-z0-9._-]{20,}|api[_-]?key|BEGIN (RSA|PRIVATE)|ghp_|AKIA[0-9A-Z]{16}|GOCSPX-|client_secret" index.html auslagen --include=*.html --include=*.js --include=*.cjs --include=*.webmanifest; then echo "Verdaechtiger Treffer"; exit 1; fi
       - name: Altlasten-Suche
         run: |
-          if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js auslagen/sync.js; then echo "Altlast gefunden"; exit 1; fi
+          if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js auslagen/sync.js auslagen/report.js; then echo "Altlast gefunden"; exit 1; fi
 
   deploy:
     needs: checks

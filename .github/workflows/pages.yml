@@ -26,6 +26,7 @@ jobs:
           node --check auslagen/sync-config.js
           node --check auslagen/sync-plan.js
           node --check auslagen/sync-plan.test.cjs
+          node --check auslagen/report.js
           node scripts/check-inline.cjs index.html
       - name: Existing tests
         run: |
@@ -33,5 +34,7 @@ jobs:
           node auslagen/sync.test.cjs
       - name: Conservative sync planner regression tests
         run: node auslagen/sync-plan.test.cjs
+      - name: Reimbursement report tests
+        run: node auslagen/report.test.cjs
 
 # Deliberately no deploy job. Go-live requires a separate reviewed change.
