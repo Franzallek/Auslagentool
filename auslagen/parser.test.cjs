@@ -1,4 +1,5 @@
 const P=require('./parser.js');
+const assert=require('node:assert/strict');
 const now=new Date('2026-11-02');
 const S={
 rechnung:`Bürobedarf Muster GmbH · Musterstraße 1 · 10115 Berlin
@@ -50,3 +51,10 @@ kauf 3,50
 12,90`
 };
 for(const [k,v] of Object.entries(S)){const r=P.parse(v,now);console.log('==',k);console.log(JSON.stringify(r))}
+assert.equal(P.parse(S.rechnung,now).purpose.value,'Druckerpapier');
+assert.equal(P.parse(S.tank,now).purpose.value,'Super E10');
+const several=P.parse(S.kassenbon,now);
+assert.equal(several.purpose,null);
+assert.ok(several.notes.some(note=>note.includes('Mehrere mögliche Artikel')));
+assert.equal(P.parse(S.gross1000,now).purpose,null);
+console.log('PASS single-item purpose suggestions and multiple-item/manual fallback');

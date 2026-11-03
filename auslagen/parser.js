@@ -33,6 +33,23 @@ function parseVendor(lines){
  for(const l of top){if(legal.test(l)){const c=cand(l);if(c)return{value:c,conf:'ok'}}}
  for(const l of top.slice(0,8)){const c=cand(l);if(c)return{value:c,conf:'check'}}
  return null}
+function parsePurpose(lines){
+ const excluded=/\b(rechnung|invoice|datum|date|kunde|seite|summe|total|subtotal|zwischensumme|mwst|m\.w\.st|ust|umsatzsteuer|mehrwertsteuer|steuer|vat|tax|zahlbetrag|zahlbar|zahlung|zahlungsziel|überweisung|überweisen|rückgeld|rueckgeld|gegeben|erhalten|fällig|faellig|kundennummer|artikelnummer|bestellnummer)\b|netto|brutto|gesamt|betrag/i;
+ const unit=/\b\d+(?:[.,]\d+)?\s*(?:kg|g|l|ml|stk\.?|stück|pcs?|packung|pack|dose|m|cm)\b/i;
+ const found=[];
+ for(const line of lines){
+  if(excluded.test(line)||/%/.test(line)||/\b\d{1,2}\.\d{1,2}\.\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/.test(line)||(!amounts(line).length&&!unit.test(line)))continue;
+  let value=line.replace(AMT,' ').replace(/\b(?:EUR|USD|GBP|CHF)\b|[€$£]/gi,' ')
+   .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|g|l|ml|stk\.?|stück|pcs?|packung|pack|dose|m|cm)\b/gi,' ')
+   .replace(/^\s*\d+\s*(?:x|×)?\s+/i,'').replace(/\s+\d+\s*$/,'')
+   .replace(/\s+[A-Z]$/,'').replace(/[|•·]+/g,' ').replace(/\s{2,}/g,' ').trim();
+  value=value.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'');
+  if(!/[A-Za-zÄÖÜäöüß]{3}/.test(value)||/^(?:kauf|artikel|ware|produkt|leistung|service|sonstiges|diverses)$/i.test(value))continue;
+  const key=value.toLocaleLowerCase('de');
+  if(!found.some(item=>item.key===key))found.push({key,value});
+ }
+ return{value:found.length===1?found[0].value:null,count:found.length};
+}
 function parseInvoiceNo(text){const m=text.match(/(?:rechnungs?\s*-?\s*(?:nr|nummer|no)\.?|re\.?\s*-?\s*nr\.?|beleg\s*-?\s*(?:nr|nummer)\.?|invoice\s*(?:no|number|#)\.?|bon\s*-?\s*nr\.?)\s*[:.#]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,30})/i);
  if(!m)return null;const v=m[1].replace(/[.\-\/_]+$/,'');return/^(datum|date|kunde|vom)$/i.test(v)?null:{value:v,conf:'check'}}
 function parseCurrency(text){const c={EUR:(text.match(/€|\bEUR\b/gi)||[]).length,USD:(text.match(/\$|\bUSD\b/gi)||[]).length,GBP:(text.match(/£|\bGBP\b/gi)||[]).length,CHF:(text.match(/\bCHF\b/gi)||[]).length};
@@ -57,7 +74,10 @@ function taxGroups(lines){const groups=[],loose=[];const kw=/mwst|m\.w\.st|ust|u
  const seen=new Set(),uniq=groups.filter(g=>{const k=g.rate+'|'+g.tax;if(seen.has(k))return false;seen.add(k);return true});
  return{groups:uniq,loose:[...new Set(loose)]}}
 function parse(text,now){text=String(text||'').replace(/\r/g,'');const lines=text.split('\n').map(l=>l.replace(/[ \t]+/g,' ').trim()).filter(Boolean);
- const res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],notes:[]};
+ const purpose=parsePurpose(lines),res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],purpose:purpose.value?{value:purpose.value,conf:'check'}:null,notes:[]};
+ if(purpose.value)res.notes.push('Ein einzelner Artikel wurde als Auslagenzweck vorgeschlagen. Bitte prüfen.');
+ else if(purpose.count>1)res.notes.push('Mehrere mögliche Artikel erkannt. Bitte den Auslagenzweck selbst eintragen.');
+ else res.notes.push('Auslagenzweck nicht automatisch erkannt. Bitte ergänzen.');
  const G=grossCands(lines).sort((a,b)=>b.w-a.w||b.c-a.c),N=netCands(lines),{groups,loose}=taxGroups(lines);
  const groupSum=groups.length?groups.reduce((s,g)=>s+g.tax,0):null;
  const T=[];if(groupSum!==null)T.push({c:groupSum,src:'groups'});loose.forEach(c=>T.push({c,src:'loose'}));
