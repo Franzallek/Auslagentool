@@ -3,7 +3,7 @@
 const PW=841.89,PH=595.28,M=28,W=PW-2*M;
 const COLS=[0.085,0.30,0.17,0.105,0.105,0.10,0.135];
 const HEAD=[['Rechnungs-','datum'],['Rechnungsaussteller Firmenname'],['Artikel'],['Betrag exkl.','MwSt.'],['Betrag MwSt.','19%'],['Betrag MwSt.','7%'],['Betrag inkl.','MwSt.']];
-const ROW_H=16,HEAD_H=26,FIRST_MAX=25,LAST_MAX=20;
+const ROW_H=16,HEAD_H=26,FIRST_MAX=25,LAST_MAX=20,BASE=0.62;
 const NL=String.fromCharCode(10),CRLF=String.fromCharCode(13,10),BOM=String.fromCharCode(0xFEFF),BS=String.fromCharCode(92);
 const nf=new Intl.NumberFormat('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const eur=c=>nf.format(c/100)+'€',plain=c=>nf.format(c/100).split('.').join('');
@@ -95,12 +95,12 @@ function layoutPages(rep,opt){
    line(xs[6],yT+1,xs[7],yT+1,0.5,0);line(xs[6],yT-1,xs[7],yT-1,0.5,0);
    const yU=yT-ROW_H;
    text(xs[3]+3,yU+4.5,'Summe Ust',9,false,'l');text(xs[5]-4,yU+4.5,eur(t.ust).replace('€',' €'),10,true,'r');
-   const yL=Math.max(M+34,yU-70);
-   if(sig){const sc=Math.min(220/sig.width,60/sig.height);P.push({t:'img',x:M+78,y:yL+2,w:sig.width*sc,h:sig.height*sc})}
+   const yL=Math.max(M+40,yU-70);
+   if(sig){const sc=Math.min(220/sig.width,60/sig.height),h=sig.height*sc,bf=typeof sig.baseline==='number'?sig.baseline:1;P.push({t:'img',x:M+78,y:yL-(1-bf)*h,w:sig.width*sc,h})}
    text(M,yL+4,dmy(rep.created)+' /',10,false,'l');
    line(M+74,yL,M+74+260,yL,0.6,0);
-   line(M,yL-6,M+W*0.4,yL-6,0.5,0,true);
-   text(M,yL-17,'Datum / Unterschrift Mitarbeiter',9,false,'l')}
+   line(M,yL-28,M+W*0.4,yL-28,0.5,0,true);
+   text(M,yL-39,'Datum / Unterschrift Mitarbeiter',9,false,'l')}
   out.push(P)});
  return out}
 function serialize(prims,rep,sig){
@@ -133,7 +133,7 @@ function serialize(prims,rep,sig){
  const out=new Uint8Array(len);let p=0;for(const b of parts){out.set(b,p);p+=b.length}
  return out}
 function buildPdf(rep,opt){return serialize(layoutPages(rep,opt),rep,opt.signature)}
-const api={splitTax,buildReport,toCsv,buildPdf,layoutPages,serialize,range,pages};
+const api={splitTax,buildReport,toCsv,buildPdf,layoutPages,serialize,range,pages,BASE};
 if(typeof module!=='undefined'&&module.exports){module.exports=api;return}
 if(typeof document==='undefined')return;
 /* ---------- Oberfläche ---------- */
@@ -184,15 +184,19 @@ function open(){
 function sign(box,rep,mf){
  box.replaceChildren(el('h2','','Unterschrift'));
  box.append(el('p','rp-rotate','Bitte das Handy quer halten, um zu unterschreiben.'));
- const wrap=el('div','rp-sig'),canvas=el('canvas','rp-pad');canvas.setAttribute('aria-label','Unterschriftenfeld');wrap.append(canvas);
- const msg=el('p','sub','Unterschreibe mit dem Finger im Feld. Die Unterschrift wird nur für diese PDF verwendet und nicht gespeichert.');msg.setAttribute('role','status');
+ const wrap=el('div','rp-sig'),canvas=el('canvas','rp-pad');canvas.setAttribute('aria-label','Unterschriftenfeld mit Unterschriftslinie');wrap.append(canvas);
+ const msg=el('p','sub','Schreibe auf der grauen Linie. Sie liegt im PDF genau auf der Unterschriftslinie; Buchstaben wie g, j oder y dürfen darunter reichen. Die Unterschrift wird nur für diese PDF verwendet und nicht gespeichert.');msg.setAttribute('role','status');
  const act=el('div','actions'),back=el('button','secondary','Zurück'),clr=el('button','secondary','Löschen'),go=el('button','','Weiter zur Vorschau');
  [back,clr,go].forEach(b=>{b.type='button';act.append(b)});
  wrap.append(msg,act);box.append(wrap);
  const dpr=Math.max(1,window.devicePixelRatio||1);
- function fitCanvas(){const r=canvas.getBoundingClientRect();canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);const c=canvas.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.lineWidth=2.4;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#000';strokes=[]}
+ function fitCanvas(){const r=canvas.getBoundingClientRect();canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);strokes=[];redraw()}
  let strokes=[],cur=null;
- function redraw(){const c=canvas.getContext('2d'),r=canvas.getBoundingClientRect();c.clearRect(0,0,r.width,r.height);for(const s of strokes){c.beginPath();s.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));if(s.length===1)c.lineTo(s[0].x+0.1,s[0].y);c.stroke()}}
+ function redraw(){const c=canvas.getContext('2d'),r=canvas.getBoundingClientRect();c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,r.width,r.height);
+  c.strokeStyle='#7d8a82';c.lineWidth=1.5;c.setLineDash([]);c.beginPath();c.moveTo(12,r.height*BASE);c.lineTo(r.width-12,r.height*BASE);c.stroke();
+  c.fillStyle='#7d8a82';c.font='12px sans-serif';c.fillText('Unterschriftslinie',14,r.height*BASE+16);
+  c.strokeStyle='#000';c.lineWidth=2.4;c.lineCap='round';c.lineJoin='round';
+  for(const s of strokes){c.beginPath();s.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));if(s.length===1)c.lineTo(s[0].x+0.1,s[0].y);c.stroke()}}
  const pt=e=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);cur=[pt(e)];strokes.push(cur);redraw()});
  canvas.addEventListener('pointermove',e=>{if(!cur)return;cur.push(pt(e));redraw()});
@@ -209,7 +213,7 @@ function sign(box,rep,mf){
    const r=canvas.getBoundingClientRect(),W2=900,H2=Math.round(W2*r.height/r.width),oc=document.createElement('canvas');oc.width=W2;oc.height=H2;const c=oc.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W2,H2);c.strokeStyle='#000';c.lineWidth=5;c.lineCap='round';c.lineJoin='round';const k=W2/r.width;
    for(const s of strokes){c.beginPath();s.forEach((p,i)=>i?c.lineTo(p.x*k,p.y*k):c.moveTo(p.x*k,p.y*k));if(s.length===1)c.lineTo(s[0].x*k+0.1,s[0].y*k);c.stroke()}
    const b64=oc.toDataURL('image/jpeg',0.92).split(',')[1],bin=atob(b64),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
-   const sig={bytes,width:W2,height:H2},prims=layoutPages(rep,{measure:mf,signature:sig}),pdf=serialize(prims,rep,sig),csv=new TextEncoder().encode(toCsv(rep));
+   const sig={bytes,width:W2,height:H2,baseline:BASE},prims=layoutPages(rep,{measure:mf,signature:sig}),pdf=serialize(prims,rep,sig),csv=new TextEncoder().encode(toCsv(rep));
    done(box,rep,pdf,csv,prims,oc,mf)}
   catch(e){msg.textContent='Export fehlgeschlagen: '+(e&&e.message||e);go.disabled=false}};
 }
@@ -226,6 +230,7 @@ function done(box,rep,pdf,csv,prims,sigCanvas,mf){
   if(navigator.canShare&&navigator.canShare({files})){const s=el('button','secondary','Teilen …');s.type='button';s.onclick=()=>navigator.share({files,title:'Auslagenerstattung'}).catch(()=>{});act.append(s)}}catch(e){}
  act.append(re,x);box.append(act);
 }
-function init(){const b=document.getElementById('makeReport');if(b)b.onclick=open}
+function loadPdfImport(){if(document.querySelector('script[data-pdfimport]'))return;const s=document.createElement('script');s.src='pdfimport.js';s.dataset.pdfimport='1';document.head.append(s)}
+function init(){const b=document.getElementById('makeReport');if(b)b.onclick=open;loadPdfImport()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(typeof self!=='undefined'?self:this);
