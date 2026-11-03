@@ -230,6 +230,7 @@ function done(box,rep,pdf,csv,prims,sigCanvas,mf){
   if(navigator.canShare&&navigator.canShare({files})){const s=el('button','secondary','Teilen …');s.type='button';s.onclick=()=>navigator.share({files,title:'Auslagenerstattung'}).catch(()=>{});act.append(s)}}catch(e){}
  act.append(re,x);box.append(act);
 }
-function init(){const b=document.getElementById('makeReport');if(b)b.onclick=open}
+function loadPdfImport(){if(document.querySelector('script[data-pdfimport]'))return;const s=document.createElement('script');s.src='pdfimport.js';s.dataset.pdfimport='1';document.head.append(s)}
+function init(){const b=document.getElementById('makeReport');if(b)b.onclick=open;loadPdfImport()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(typeof self!=='undefined'?self:this);
