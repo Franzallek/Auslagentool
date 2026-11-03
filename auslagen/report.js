@@ -59,24 +59,23 @@ function pstr(s){let r='(';for(const c of latin1(s)){if(c===40||c===41||c===92)r
 const n2=v=>(Math.round(v*100)/100).toString();
 function fit(measure,text,size,bold,maxW){let t=String(text);if(measure(t,size,bold)<=maxW)return t;while(t.length>1&&measure(t+'…',size,bold)>maxW)t=t.slice(0,-1);return t+'…'}
 function pages(n){const out=[];let left=n;while(left>LAST_MAX){let take=Math.min(FIRST_MAX,left);if(left-take===0)take=left-1;out.push(take);left-=take}out.push(left);return out}
-function buildPdf(rep,opt){
+function layoutPages(rep,opt){
  const measure=opt.measure,sig=opt.signature,split=pages(rep.rows.length),xs=[];let acc=M;for(const c of COLS){xs.push(acc);acc+=c*W}xs.push(M+W);
- const contents=[];let idx=0;
+ const out=[];let idx=0;
  split.forEach((count,pi)=>{
-  const ops=[],last=pi===split.length-1;
-  const text=(x,y,s,size,bold,align)=>{const w=measure(s,size,bold);const px=align==='r'?x-w:align==='c'?x-w/2:x;ops.push('BT /'+(bold?'F2':'F1')+' '+n2(size)+' Tf '+n2(px)+' '+n2(y)+' Td '+pstr(s)+' Tj ET')};
-  const line=(x1,y1,x2,y2,w,g,dash)=>ops.push('q '+n2(g||0)+' G '+n2(w)+' w '+(dash?'[2 2] 0 d ':'')+n2(x1)+' '+n2(y1)+' m '+n2(x2)+' '+n2(y2)+' l S Q');
+  const P=[],last=pi===split.length-1;
+  const text=(x,y,s,size,bold,align)=>{const w=measure(s,size,bold);const px=align==='r'?x-w:align==='c'?x-w/2:x;P.push({t:'text',x:px,y,s,size,bold:!!bold})};
+  const line=(x1,y1,x2,y2,w,g,dash)=>P.push({t:'line',x1,y1,x2,y2,w,g:g||0,dash:!!dash});
   const top=PH-M;
   text(M,top-10,'Auslagenerstattung',11,false,'l');
   text(PW/2,top-10,'Name Mitarbeiter: '+rep.name,11,false,'c');
   text(PW-M,top-10,rep.rangeText,11,false,'r');
   const ty=top-34;
   line(M,ty,M+W,ty,0.8,0);
-  HEAD[0].forEach(()=>0);
   HEAD.forEach((h,i)=>{const right=i>=3,x=right?xs[i+1]-4:xs[i]+3;h.forEach((l,k)=>text(x,ty-10-k*10,l,8.5,true,right?'r':'l'))});
   const y0=ty-HEAD_H;line(M,y0,M+W,y0,0.8,0);
   const rows=rep.rows.slice(idx,idx+count);idx+=count;
-  rows.forEach((r,k)=>{const yb=y0-(k+1)*ROW_H,yt=yb+ROW_H-4.2;
+  rows.forEach((r,k)=>{const yb=y0-(k+1)*ROW_H,yt=yb+4.5;
    text(xs[0]+3,yt,dmy(r.date),9,false,'l');
    text(xs[1]+3,yt,fit(measure,r.vendor,9,false,xs[2]-xs[1]-8),9,false,'l');
    text(xs[2]+3,yt,fit(measure,r.article,9,false,xs[3]-xs[2]-8),9,false,'l');
@@ -91,19 +90,24 @@ function buildPdf(rep,opt){
   if(last){
    const t=rep.totals,yT=yEnd-ROW_H;
    line(M,yEnd,M+W,yEnd,0.8,0);
-   text(xs[3]-6,yT+4,'Erstattungssumme',10,true,'r');
-   text(xs[4]-4,yT+4,eur(t.net),9.5,false,'r');text(xs[5]-4,yT+4,eur(t.v19),9.5,false,'r');text(xs[6]-4,yT+4,eur(t.v7),9.5,false,'r');text(xs[7]-4,yT+4,eur(t.gross),10,true,'r');
+   text(xs[3]-6,yT+4.5,'Erstattungssumme',10,true,'r');
+   text(xs[4]-4,yT+4.5,eur(t.net),9.5,false,'r');text(xs[5]-4,yT+4.5,eur(t.v19),9.5,false,'r');text(xs[6]-4,yT+4.5,eur(t.v7),9.5,false,'r');text(xs[7]-4,yT+4.5,eur(t.gross),10,true,'r');
    line(xs[6],yT+1,xs[7],yT+1,0.5,0);line(xs[6],yT-1,xs[7],yT-1,0.5,0);
    const yU=yT-ROW_H;
-   text(xs[3]+3,yU+4,'Summe Ust',9,false,'l');text(xs[5]-4,yU+4,eur(t.ust).replace('€',' €'),10,true,'r');
+   text(xs[3]+3,yU+4.5,'Summe Ust',9,false,'l');text(xs[5]-4,yU+4.5,eur(t.ust).replace('€',' €'),10,true,'r');
    const yL=Math.max(M+34,yU-70);
-   if(sig){const sc=Math.min(220/sig.width,60/sig.height),w=sig.width*sc,h=sig.height*sc;ops.push('q '+n2(w)+' 0 0 '+n2(h)+' '+n2(M+78)+' '+n2(yL+2)+' cm /Im1 Do Q')}
+   if(sig){const sc=Math.min(220/sig.width,60/sig.height);P.push({t:'img',x:M+78,y:yL+2,w:sig.width*sc,h:sig.height*sc})}
    text(M,yL+4,dmy(rep.created)+' /',10,false,'l');
    line(M+74,yL,M+74+260,yL,0.6,0);
    line(M,yL-6,M+W*0.4,yL-6,0.5,0,true);
    text(M,yL-17,'Datum / Unterschrift Mitarbeiter',9,false,'l')}
-  contents.push(ops.join(NL))});
- /* Objekte */
+  out.push(P)});
+ return out}
+function serialize(prims,rep,sig){
+ const contents=prims.map(P=>P.map(p=>{
+  if(p.t==='text')return 'BT /'+(p.bold?'F2':'F1')+' '+n2(p.size)+' Tf '+n2(p.x)+' '+n2(p.y)+' Td '+pstr(p.s)+' Tj ET';
+  if(p.t==='line')return 'q '+n2(p.g)+' G '+n2(p.w)+' w '+(p.dash?'[2 2] 0 d ':'')+n2(p.x1)+' '+n2(p.y1)+' m '+n2(p.x2)+' '+n2(p.y2)+' l S Q';
+  return 'q '+n2(p.w)+' 0 0 '+n2(p.h)+' '+n2(p.x)+' '+n2(p.y)+' cm /Im1 Do Q'}).join(NL));
  const parts=[],offs=[];let len=0;
  const push=b=>{parts.push(b);len+=b.length};
  const A=s=>Uint8Array.from(Array.from(s,c=>c.charCodeAt(0)));
@@ -128,13 +132,14 @@ function buildPdf(rep,opt){
  push(A(x));
  const out=new Uint8Array(len);let p=0;for(const b of parts){out.set(b,p);p+=b.length}
  return out}
-const api={splitTax,buildReport,toCsv,buildPdf,range,pages};
+function buildPdf(rep,opt){return serialize(layoutPages(rep,opt),rep,opt.signature)}
+const api={splitTax,buildReport,toCsv,buildPdf,layoutPages,serialize,range,pages};
 if(typeof module!=='undefined'&&module.exports){module.exports=api;return}
 if(typeof document==='undefined')return;
 /* ---------- Oberfläche ---------- */
 const NAME_KEY='auslagen-employee-name';
 const css=document.createElement('style');
-css.textContent='.rp-back{position:fixed;inset:0;background:#0009;z-index:50;display:flex;align-items:center;justify-content:center;padding:12px}.rp-box{background:#fff;border-radius:18px;max-width:760px;width:100%;max-height:96vh;overflow:auto;padding:20px}.rp-box h2{margin-top:0}.rp-pad{border:2px dashed #9fb3a3;border-radius:12px;background:#fff;touch-action:none;width:100%;height:200px;display:block}.rp-rotate{display:none;background:#fff4dc;color:#735323;border-radius:12px;padding:14px;font-size:14px;margin:10px 0}.rp-issues{color:#8f4f0a;font-size:13px;line-height:1.5;margin:8px 0;padding-left:18px}@media (orientation:portrait) and (max-width:700px){.rp-rotate{display:block}.rp-sig{display:none}}';
+css.textContent='.rp-back{position:fixed;inset:0;background:#0009;z-index:50;display:flex;align-items:center;justify-content:center;padding:12px}.rp-box{background:#fff;border-radius:18px;max-width:960px;width:100%;max-height:96vh;overflow:auto;padding:20px}.rp-box h2{margin-top:0}.rp-pad{border:2px dashed #9fb3a3;border-radius:12px;background:#fff;touch-action:none;width:100%;height:200px;display:block}.rp-rotate{display:none;background:#fff4dc;color:#735323;border-radius:12px;padding:14px;font-size:14px;margin:10px 0}.rp-issues{color:#8f4f0a;font-size:13px;line-height:1.5;margin:8px 0;padding-left:18px}.rp-pv{overflow-x:auto;border:1px solid #dde4dc;border-radius:10px;background:#e9ece8;padding:8px;margin:10px 0}.rp-pv canvas{display:block;margin:0 0 10px;box-shadow:0 1px 4px #0003}@media (orientation:portrait) and (max-width:700px){.rp-rotate{display:block}.rp-sig{display:none}}';
 document.head.append(css);
 const dlg={back:null};
 function close(){if(dlg.back){dlg.back.remove();dlg.back=null}}
@@ -143,32 +148,45 @@ function measureFactory(){const c=document.createElement('canvas').getContext('2
 function download(bytes,name,type){const blob=new Blob([bytes],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 function todayIso(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
 function safe(s){return String(s).normalize('NFKD').replace(/[^A-Za-z0-9.-]+/g,'_').replace(/^_+|_+$/g,'')||'Mitarbeiter'}
+function renderPreview(box,prims,sigCanvas){
+ box.replaceChildren();
+ const w=Math.max(box.clientWidth-16,640),k=w/PW,dpr=Math.max(1,window.devicePixelRatio||1);
+ prims.forEach((P,pi)=>{
+  const cv=document.createElement('canvas');cv.style.width=w+'px';cv.style.height=(PH*k)+'px';cv.width=Math.round(w*dpr);cv.height=Math.round(PH*k*dpr);
+  cv.setAttribute('role','img');cv.setAttribute('aria-label','Vorschau Seite '+(pi+1)+' von '+prims.length);
+  const c=cv.getContext('2d');c.scale(dpr,dpr);c.fillStyle='#fff';c.fillRect(0,0,w,PH*k);
+  for(const p of P){
+   if(p.t==='line'){const g=Math.round(p.g*255);c.strokeStyle='rgb('+g+','+g+','+g+')';c.lineWidth=Math.max(0.5,p.w*k);c.setLineDash(p.dash?[2*k,2*k]:[]);c.beginPath();c.moveTo(p.x1*k,(PH-p.y1)*k);c.lineTo(p.x2*k,(PH-p.y2)*k);c.stroke()}
+   else if(p.t==='text'){c.fillStyle='#000';c.font=(p.bold?'bold ':'')+(p.size*k)+'px Helvetica, Arial, sans-serif';c.fillText(p.s,p.x*k,(PH-p.y)*k)}
+   else if(p.t==='img'&&sigCanvas){c.drawImage(sigCanvas,p.x*k,(PH-p.y-p.h)*k,p.w*k,p.h*k)}}
+  box.append(cv)})}
 function open(){
  const chosen=db.filter(r=>selected.has(r.id));
  if(!chosen.length){toast('Bitte zuerst Belege auswählen.');return}
  close();
+ const mf=measureFactory();
  const back=el('div','rp-back'),box=el('div','rp-box');back.append(box);back.setAttribute('role','dialog');back.setAttribute('aria-modal','true');dlg.back=back;
  box.append(el('h2','','Auslagenerstattung erstellen'));
  const info=el('p','sub');
  const lab=el('label','','Name Mitarbeiter');lab.setAttribute('for','rp_name');
  const inp=el('input');inp.id='rp_name';inp.maxLength=100;inp.autocomplete='name';inp.value=localStorage.getItem(NAME_KEY)||'';
- const issues=el('ul','rp-issues');
+ const issues=el('ul','rp-issues'),pv=el('div','rp-pv');
  const act=el('div','actions'),cancel=el('button','secondary','Abbrechen'),next=el('button','','Weiter zur Unterschrift');cancel.type='button';next.type='button';act.append(cancel,next);
- box.append(info,lab,inp,issues,act);
+ box.append(info,lab,inp,issues,el('p','sub','Vorschau (ohne Unterschrift):'),pv,act);
  document.body.append(back);
  let rep=null;
- function refresh(){try{rep=buildReport(chosen,inp.value,todayIso());info.textContent=chosen.length+' Beleg(e) · Zeitraum '+rep.rangeText+' · Erstattungssumme '+eur(rep.totals.gross)+'. Zeitraum und Summen ergeben sich aus den ausgewählten Belegen.';issues.replaceChildren(...rep.issues.map(t=>el('li','',t)));next.disabled=rep.issues.length>0||!inp.value.trim()}catch(e){info.textContent=e.message;next.disabled=true}}
+ function refresh(){try{rep=buildReport(chosen,inp.value,todayIso());info.textContent=chosen.length+' Beleg(e) · Zeitraum '+rep.rangeText+' · Erstattungssumme '+eur(rep.totals.gross)+'. Zeitraum und Summen ergeben sich aus den ausgewählten Belegen.';issues.replaceChildren(...rep.issues.map(t=>el('li','',t)));renderPreview(pv,layoutPages(rep,{measure:mf,signature:null}),null);next.disabled=rep.issues.length>0||!inp.value.trim()}catch(e){info.textContent=e.message;next.disabled=true}}
  inp.addEventListener('input',refresh);refresh();inp.focus();
  cancel.onclick=close;
  back.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
- next.onclick=()=>{localStorage.setItem(NAME_KEY,inp.value.trim());rep=buildReport(chosen,inp.value,todayIso());sign(box,rep)};
+ next.onclick=()=>{localStorage.setItem(NAME_KEY,inp.value.trim());rep=buildReport(chosen,inp.value,todayIso());sign(box,rep,mf)};
 }
-function sign(box,rep){
+function sign(box,rep,mf){
  box.replaceChildren(el('h2','','Unterschrift'));
  box.append(el('p','rp-rotate','Bitte das Handy quer halten, um zu unterschreiben.'));
  const wrap=el('div','rp-sig'),canvas=el('canvas','rp-pad');canvas.setAttribute('aria-label','Unterschriftenfeld');wrap.append(canvas);
  const msg=el('p','sub','Unterschreibe mit dem Finger im Feld. Die Unterschrift wird nur für diese PDF verwendet und nicht gespeichert.');msg.setAttribute('role','status');
- const act=el('div','actions'),back=el('button','secondary','Zurück'),clr=el('button','secondary','Löschen'),go=el('button','','Unterschreiben und exportieren');
+ const act=el('div','actions'),back=el('button','secondary','Zurück'),clr=el('button','secondary','Löschen'),go=el('button','','Weiter zur Vorschau');
  [back,clr,go].forEach(b=>{b.type='button';act.append(b)});
  wrap.append(msg,act);box.append(wrap);
  const dpr=Math.max(1,window.devicePixelRatio||1);
@@ -191,21 +209,22 @@ function sign(box,rep){
    const r=canvas.getBoundingClientRect(),W2=900,H2=Math.round(W2*r.height/r.width),oc=document.createElement('canvas');oc.width=W2;oc.height=H2;const c=oc.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W2,H2);c.strokeStyle='#000';c.lineWidth=5;c.lineCap='round';c.lineJoin='round';const k=W2/r.width;
    for(const s of strokes){c.beginPath();s.forEach((p,i)=>i?c.lineTo(p.x*k,p.y*k):c.moveTo(p.x*k,p.y*k));if(s.length===1)c.lineTo(s[0].x*k+0.1,s[0].y*k);c.stroke()}
    const b64=oc.toDataURL('image/jpeg',0.92).split(',')[1],bin=atob(b64),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
-   const pdf=buildPdf(rep,{measure:measureFactory(),signature:{bytes,width:W2,height:H2}}),csv=new TextEncoder().encode(toCsv(rep));
-   done(box,rep,pdf,csv)}
+   const sig={bytes,width:W2,height:H2},prims=layoutPages(rep,{measure:mf,signature:sig}),pdf=serialize(prims,rep,sig),csv=new TextEncoder().encode(toCsv(rep));
+   done(box,rep,pdf,csv,prims,oc,mf)}
   catch(e){msg.textContent='Export fehlgeschlagen: '+(e&&e.message||e);go.disabled=false}};
 }
-function done(box,rep,pdf,csv){
+function done(box,rep,pdf,csv,prims,sigCanvas,mf){
  const base='Auslagenerstattung_'+safe(rep.name)+'_'+rep.created;
- box.replaceChildren(el('h2','','Fertig'));
- box.append(el('p','sub',rep.rows.length+' Beleg(e), Zeitraum '+rep.rangeText+', Erstattungssumme '+eur(rep.totals.gross)+', Summe Ust '+eur(rep.totals.ust)+'. Die Belege wurden nicht als eingereicht markiert.'));
- const act=el('div','actions'),p=el('button','','PDF herunterladen'),c=el('button','secondary','CSV herunterladen'),x=el('button','secondary','Schließen');
- [p,c,x].forEach(b=>{b.type='button'});
- p.onclick=()=>download(pdf,base+'.pdf','application/pdf');c.onclick=()=>download(csv,base+'.csv','text/csv;charset=utf-8');x.onclick=close;
+ box.replaceChildren(el('h2','','Vorschau und Export'));
+ box.append(el('p','sub',rep.rows.length+' Beleg(e), Zeitraum '+rep.rangeText+', Erstattungssumme '+eur(rep.totals.gross)+', Summe Ust '+eur(rep.totals.ust)+'. Die Belege wurden nicht als eingereicht markiert. Die Vorschau zeigt den Inhalt der PDF.'));
+ const pv=el('div','rp-pv');box.append(pv);renderPreview(pv,prims,sigCanvas);
+ const act=el('div','actions'),p=el('button','','PDF herunterladen'),c=el('button','secondary','CSV herunterladen'),re=el('button','secondary','Unterschrift ändern'),x=el('button','secondary','Schließen');
+ [p,c,re,x].forEach(b=>{b.type='button'});
+ p.onclick=()=>download(pdf,base+'.pdf','application/pdf');c.onclick=()=>download(csv,base+'.csv','text/csv;charset=utf-8');re.onclick=()=>sign(box,rep,mf);x.onclick=close;
  act.append(p,c);
  try{const files=[new File([pdf],base+'.pdf',{type:'application/pdf'}),new File([csv],base+'.csv',{type:'text/csv'})];
   if(navigator.canShare&&navigator.canShare({files})){const s=el('button','secondary','Teilen …');s.type='button';s.onclick=()=>navigator.share({files,title:'Auslagenerstattung'}).catch(()=>{});act.append(s)}}catch(e){}
- act.append(x);box.append(act);
+ act.append(re,x);box.append(act);
 }
 function init(){const b=document.getElementById('makeReport');if(b)b.onclick=open}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
