@@ -1,18 +1,14 @@
 name: Einmalige Vorschau - nur Branch preview/once
-
 on:
   push:
     branches: ['preview/once']
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: true
-
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -36,23 +32,41 @@ jobs:
           node auslagen/sync-plan.test.cjs
           node auslagen/report.test.cjs
           node auslagen/pdfimport.test.cjs
-      - name: Schluessel-Suche in ausgelieferten Dateien
+      - name: Tesseract-Integritaet und Schluessel-Suche
+        shell: bash
         run: |
-          # Nur Dateinamen ausgeben, keine moeglichen Geheimnisse oder Datenbloecke.
-          status=0
-          grep -rlE "sk_live|sk_test|service_role|Bearer [A-Za-z0-9._-]{20,}|api[_-]?key|BEGIN (RSA|PRIVATE)|ghp_|AKIA[0-9A-Z]{16}|GOCSPX-|client_secret" index.html auslagen --include='*.html' --include='*.js' --include='*.mjs' --include='*.cjs' --include='*.webmanifest' > "$RUNNER_TEMP/secret-match-files.txt" || status=$?
-          if [ "$status" -eq 0 ]; then
-            echo 'Verdaechtige Treffer in folgenden Dateien; manuelle Pruefung erforderlich:'
-            cat "$RUNNER_TEMP/secret-match-files.txt"
-            exit 1
-          elif [ "$status" -ne 1 ]; then
-            echo 'Schluessel-Suche konnte nicht vollstaendig ausgefuehrt werden.'
-            exit "$status"
-          fi
+          set -euo pipefail
+          for name in tesseract-core.wasm.js tesseract-core-simd.wasm.js tesseract-core-lstm.wasm.js tesseract-core-simd-lstm.wasm.js; do
+            curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 90 "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/$name" -o "$RUNNER_TEMP/$name"
+            cmp --silent "auslagen/vendor/core/$name" "$RUNNER_TEMP/$name" || { echo "Integritaetsfehler: $name"; exit 1; }
+            echo "Originaldatei bestaetigt: $name"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+          verified = {
+              'auslagen/vendor/core/tesseract-core.wasm.js',
+              'auslagen/vendor/core/tesseract-core-simd.wasm.js',
+              'auslagen/vendor/core/tesseract-core-lstm.wasm.js',
+              'auslagen/vendor/core/tesseract-core-simd-lstm.wasm.js',
+          }
+          pattern = re.compile(rb'sk_live|sk_test|service_role|Bearer [A-Za-z0-9._-]{20,}|api[_-]?key|BEGIN (RSA|PRIVATE)|ghp_|AKIA[0-9A-Z]{16}|GOCSPX-|client_secret')
+          paths = [Path('index.html')] + sorted(Path('auslagen').rglob('*'))
+          bad = False
+          for path in paths:
+              if not path.is_file() or path.suffix not in {'.html', '.js', '.mjs', '.cjs', '.webmanifest'}:
+                  continue
+              if path.as_posix() in verified:
+                  continue
+              if pattern.search(path.read_bytes()):
+                  print('Verdaechtiger Treffer: ' + path.as_posix())
+                  bad = True
+          sys.exit(1 if bad else 0)
+          PY
       - name: Altlasten-Suche
         run: |
           if grep -Fn -e console.log -e jsdelivr -e projectnaptha -e unsafe-eval -e 'Lorem ipsum' index.html auslagen/sw.js auslagen/parser.js auslagen/sync.js auslagen/report.js; then echo "Altlast gefunden"; exit 1; fi
-
   deploy:
     needs: checks
     runs-on: ubuntu-latest
