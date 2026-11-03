@@ -48,7 +48,7 @@ function parsePurpose(lines){
   const key=value.toLocaleLowerCase('de');
   if(!found.some(item=>item.key===key))found.push({key,value});
  }
- return{value:found.length===1?found[0].value:null,count:found.length};
+ return{value:found.length===1?found[0].value:null,items:found.map(item=>item.value)};
 }
 function parseInvoiceNo(text){const m=text.match(/(?:rechnungs?\s*-?\s*(?:nr|nummer|no)\.?|re\.?\s*-?\s*nr\.?|beleg\s*-?\s*(?:nr|nummer)\.?|invoice\s*(?:no|number|#)\.?|bon\s*-?\s*nr\.?)\s*[:.#]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,30})/i);
  if(!m)return null;const v=m[1].replace(/[.\-\/_]+$/,'');return/^(datum|date|kunde|vom)$/i.test(v)?null:{value:v,conf:'check'}}
@@ -74,9 +74,9 @@ function taxGroups(lines){const groups=[],loose=[];const kw=/mwst|m\.w\.st|ust|u
  const seen=new Set(),uniq=groups.filter(g=>{const k=g.rate+'|'+g.tax;if(seen.has(k))return false;seen.add(k);return true});
  return{groups:uniq,loose:[...new Set(loose)]}}
 function parse(text,now){text=String(text||'').replace(/\r/g,'');const lines=text.split('\n').map(l=>l.replace(/[ \t]+/g,' ').trim()).filter(Boolean);
- const purpose=parsePurpose(lines),res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],purpose:purpose.value?{value:purpose.value,conf:'check'}:null,notes:[]};
+ const purpose=parsePurpose(lines),res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],purpose:purpose.items.length?{value:purpose.value,items:purpose.items,conf:'check'}:null,notes:[]};
  if(purpose.value)res.notes.push('Ein einzelner Artikel wurde als Auslagenzweck vorgeschlagen. Bitte prüfen.');
- else if(purpose.count>1)res.notes.push('Mehrere mögliche Artikel erkannt. Bitte den Auslagenzweck selbst eintragen.');
+ else if(purpose.items.length>1)res.notes.push('Mehrere mögliche Artikel erkannt. Bitte im Auswahlfeld die passenden Artikel auswählen.');
  else res.notes.push('Auslagenzweck nicht automatisch erkannt. Bitte ergänzen.');
  const G=grossCands(lines).sort((a,b)=>b.w-a.w||b.c-a.c),N=netCands(lines),{groups,loose}=taxGroups(lines);
  const groupSum=groups.length?groups.reduce((s,g)=>s+g.tax,0):null;
