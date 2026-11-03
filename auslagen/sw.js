@@ -1,4 +1,4 @@
-const CACHE='auslagen-v3-5';
+const CACHE='auslagen-v3-6';
 const SHELL=['./','index.html','parser.js','sync-config.js','sync.js','report.js','receipt-pdf.js','pdfimport.js','manifest.webmanifest','icon.svg','icon-180.png','icon-192.png','icon-512.png',
 'vendor/tesseract.min.js','vendor/worker.min.js','vendor/core/tesseract-core.wasm.js','vendor/core/tesseract-core-simd.wasm.js','vendor/core/tesseract-core-lstm.wasm.js','vendor/core/tesseract-core-simd-lstm.wasm.js','vendor/lang/deu.traineddata.gz','vendor/pdf.min.mjs','vendor/pdf.worker.min.mjs'];
 self.addEventListener('install',e=>{e.waitUntil((async()=>{const c=await caches.open(CACHE);await Promise.all(SHELL.map(async u=>{try{const r=await fetch(u,{cache:'reload'});const ct=r.headers.get('content-type')||'';if(r.ok&&!(u.startsWith('vendor/')&&ct.includes('text/html')))await c.put(u,r)}catch(_){}}));self.skipWaiting()})())});

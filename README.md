@@ -8,6 +8,10 @@ Das Projekt ist nicht für die Öffentlichkeit freigegeben. Der Workflow für `p
 
 Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. `.github/workflows/pages.yml` führt Prüfungen aus, deployt aber nicht. `.github/workflows/preview.yml` deployt ausschließlich `preview/once`.
 
+## Gestaltung
+
+Die Oberfläche verwendet die Palette „Ocean Precision“ mit Marineblau, Wasserblau und ruhigen hellen Flächen. Das Farbschema folgt zunächst der Geräteeinstellung; über „Dunkles Design“ lässt es sich umschalten. Eine manuelle Auswahl wird ausschließlich als Anzeigepräferenz im lokalen Browser gespeichert, nicht mit Belegdaten synchronisiert.
+
 ## Belegkopien als Sammel-PDF
 
 Unter „Meine Auslagen“ die gewünschten Belege markieren und „Belegkopien als Sammel-PDF“ wählen. Das PDF enthält nur die zugehörigen Bildseiten: jedes Bild als eigene Seite und bei Original-PDF-Anhängen jede PDF-Seite. Die Erstellung erfolgt lokal; es werden keine Belege hochgeladen und Bearbeitungsstände oder gespeicherte Dateien nicht verändert. Fehlt bei einem ausgewählten Beleg eine Datei oder ist eine Datei nicht lesbar, wird kein unvollständiges PDF erzeugt. Zum Schutz vor Speicherüberlastung gelten Grenzen von 50 MB ausgewählten Quelldateien, 80 MB PDF-Ausgabe und 250 Seiten; bei Überschreitung wird der Export mit einer Fehlermeldung abgebrochen.
