@@ -79,17 +79,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Seite zusammenstellen
+        env:
+          PUSHED_AT: ${{ github.event.repository.pushed_at }}
         run: |
           mkdir _site
           cp -r auslagen/. _site/
           cp index.html _site/index.html
           cp -r vendor _site/vendor
+          printf '{"pushedAt":"%s","commit":"%s"}\n' "$PUSHED_AT" "$GITHUB_SHA" > _site/build-info.json
           rm -f _site/*.test.cjs _site/setup-vendor.mjs _site/setup-vendor.sh _site/_headers _site/README.md
           for asset in sync-config.js sync.js; do
             test -s "_site/$asset" || { echo "Fehlendes App-Asset: $asset"; exit 1; }
             grep -Fq "src=\"$asset\"" _site/index.html || { echo "App-Einstieg laedt $asset nicht."; exit 1; }
           done
-          if ! grep -Fq 'Dauerhaft aus dem verbundenen Google Drive löschen?' _site/sync.js; then
+          if ! grep -Fq 'PDF wurde erstellt. Ausgewählte Belege und Bilder dauerhaft löschen?' _site/sync.js; then
             echo "Cloud-Loeschhinweis fehlt im Sync-Modul."
             exit 1
           fi

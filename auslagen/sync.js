@@ -9,6 +9,9 @@ async function reconcile(io){
  const vault=await io.remote.vault(!state.vault);
  if(state.vault&&state.vault!==vault)throw Error('Anderes Google Drive erkannt. Abgleich blockiert. Bitte getrenntes Browserprofil verwenden; keine Belege wurden übertragen.');
  if(!state.vault&&local.length&&!await io.adopt(local.length))throw Error('Übernahme der lokalen Belege abgebrochen.');
+ const localPurged=Object.keys(state.cloudPurged||{});
+ for(const id of localPurged)if(!/^[\w-]{1,100}$/.test(id))throw Error('Ungültige lokale Löschmarkierung; Abgleich abgebrochen.');
+ if(localPurged.length&&typeof io.remote.markPurged==='function')await io.remote.markPurged(localPurged);
  const [versions,remotePurged]=await Promise.all([io.remote.versions(),io.remote.purgedIds()]),groups=new Map();
  for(const v of versions){if(!valid(v.receipt)||v.hash!==await io.hash(v.receipt))throw Error('Ungültige Cloud-Version; Abgleich abgebrochen.');const a=groups.get(v.receipt.id)||[];a.push(v);groups.set(v.receipt.id,a);}
  const byLocal=new Map(local.map(r=>[r.id,r])),base=state.base||{},cloudPurged={...(state.cloudPurged||{})};
@@ -37,22 +40,20 @@ async function purgeReceipts(io,receipts){
  const chosen=new Map();
  for(const receipt of receipts){if(!receipt||typeof receipt.id!=='string'||! /^[\w-]{1,100}$/.test(receipt.id))throw Error('Ungültige Belegauswahl.');chosen.set(receipt.id,receipt);}
  const state=io.state.load()||{},vault=await io.remote.vault(false);
- if(!vault)return{deletedReceipts:0,deletedVersions:0,cancelled:false};
+ if(!vault)throw Error('Das zugeordnete Google-Drive-Vault wurde nicht gefunden. Lokale Belege wurden nicht gelöscht; erst Konto und Verbindung prüfen.');
  if(!state.vault||state.vault!==vault)throw Error('Dieses Google Drive ist auf diesem Gerät nicht durch einen erfolgreichen Abgleich zugeordnet. Erst abgleichen; es wurden keine Dateien gelöscht.');
  const versions=await io.remote.versionFiles();
  for(const version of versions)if(!valid(version.receipt)||version.hash!==await io.hash(version.receipt))throw Error('Ungültige Cloud-Version; Löschung abgebrochen.');
- const matches=versions.filter(v=>chosen.has(v.receipt.id));
- if(!matches.length)return{deletedReceipts:0,deletedVersions:0,cancelled:false};
- const matchingIds=[...new Set(matches.map(v=>v.receipt.id))];
- if(!await io.confirm({receipts:matchingIds.map(id=>chosen.get(id)),localReceipts:receipts,versions:matches.length}))return{deletedReceipts:0,deletedVersions:0,cancelled:true};
+ const matches=versions.filter(v=>chosen.has(v.receipt.id)),matchingIds=[...new Set(matches.map(v=>v.receipt.id))];
+ if(!await io.confirm({receipts:[...chosen.values()],cloudReceipts:matchingIds.map(id=>chosen.get(id)),versions:matches.length}))return{deletedReceipts:0,deletedVersions:0,cancelled:true};
  if(typeof io.remote.markPurged!=='function')throw Error('Cloud-Löschmarkierung wird von diesem Abgleich nicht unterstützt; keine Cloud-Dateien wurden gelöscht.');
  const cloudPurged={...(state.cloudPurged||{})};
- for(const id of matchingIds)cloudPurged[id]=true;
+ for(const id of chosen.keys())cloudPurged[id]=true;
  io.state.save({...state,cloudPurged});
- await io.remote.markPurged(matchingIds);
+ await io.remote.markPurged([...chosen.keys()]);
  const deletedVersions=await io.remote.deleteFiles(matches.map(v=>v.fileId));
  if(deletedVersions!==matches.length){const error=Error('Cloud-Löschung unvollständig; lokale Belege wurden nicht entfernt.');error.deletedFiles=deletedVersions;error.totalFiles=matches.length;throw error;}
- return{deletedReceipts:matchingIds.length,deletedVersions,cancelled:false,confirmed:true};
+ return{deletedReceipts:matchingIds.length,deletedVersions,tombstonedReceipts:chosen.size,cancelled:false,confirmed:true};
 }
 if(typeof module!=='undefined'&&module.exports){module.exports={reconcile,purgeReceipts,canonical,valid};return;}
 if(typeof document==='undefined')return;
@@ -83,19 +84,18 @@ async function removeReceiptCopies(receipts){
  try{
   const saved=readSyncState();
   const confirmLocal=message=>confirm('PDF wurde erstellt. Die ausgewählten Belege und Bilder jetzt dauerhaft von diesem Gerät löschen?\n\n'+message+'\n\nDiese lokale Löschung kann nicht rückgängig gemacht werden. Die PDF bleibt erhalten.');
-  if(!saved?.vault){const confirmed=confirmLocal('Es ist kein Google Drive zugeordnet. Cloud-Kopien werden nicht gelöscht.');return{confirmed,deletedVersions:0,cloudSkipped:true,message:confirmed?'Keine Drive-Zuordnung; Cloud-Kopien wurden nicht gelöscht.':'Abgebrochen; lokale Belege bleiben erhalten. Keine Drive-Zuordnung.'};}
+  if(!saved?.vault){const confirmed=confirmLocal('Es ist kein Google Drive zugeordnet. Cloud-Kopien werden nicht gelöscht.');if(confirmed){const cloudPurged={...(saved?.cloudPurged||{})};for(const receipt of receipts)cloudPurged[receipt.id]=true;localStorage.setItem(KEY,JSON.stringify({...saved,cloudPurged}));}return{confirmed,deletedVersions:0,cloudSkipped:true,message:confirmed?'Nur lokale Belege gelöscht; Cloud-Kopien wurden nicht gelöscht.':'Abgebrochen; lokale Belege bleiben erhalten. Keine Drive-Zuordnung.'};}
   await authorize();
   const account=await googleAccount();
   if(saved.account&&saved.account.sub!==account.sub)throw Error('Anderes Google-Konto erkannt. Löschung blockiert; lokale Belege wurden nicht entfernt.');
-  const io={remote,hash,state:{load:readSyncState,save:s=>localStorage.setItem(KEY,JSON.stringify(s))},confirm:({receipts:matches,localReceipts,versions})=>{
-   const labels=matches.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
-   const localLabels=localReceipts.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
-   return confirm('PDF wurde erstellt. Ausgewählte Belege und Bilder dauerhaft löschen?\n\nAuf diesem Gerät:\n'+localLabels+'\n\nIm verbundenen Google Drive:\n'+labels+'\n\n'+localReceipts.length+' lokale Beleg(e) und '+matches.length+' Cloud-Beleg(e) mit '+versions+' Version(en) werden endgültig gelöscht. Ein minimaler Cloud-Löschvermerk mit Beleg-ID bleibt, damit entfernte Cloud-Belege nicht erneut hochgeladen werden. Die heruntergeladene PDF bleibt erhalten. Andere Geräte können noch lokale Kopien besitzen.');
+  const io={remote,hash,state:{load:readSyncState,save:s=>localStorage.setItem(KEY,JSON.stringify(s))},confirm:({receipts:selectedReceipts,cloudReceipts,versions})=>{
+   const labels=selectedReceipts.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
+   const cloudLabels=cloudReceipts.map(r=>(r.vendor||'Beleg')+' · '+(r.date||'')).join('\n');
+   return confirm('PDF wurde erstellt. Ausgewählte Belege und Bilder dauerhaft löschen?\n\nAuf diesem Gerät:\n'+labels+'\n\nIm verbundenen Google Drive:\n'+(cloudLabels||'Keine Cloud-Kopien gefunden.')+'\n\n'+selectedReceipts.length+' lokale Beleg(e), '+cloudReceipts.length+' Cloud-Beleg(e) und '+versions+' Cloud-Version(en) werden endgültig gelöscht. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass entfernte Belege erneut synchronisiert werden. Die heruntergeladene PDF bleibt erhalten. Andere Geräte können noch lokale Kopien besitzen.');
   }};
   const result=await purgeReceipts(io,receipts);
   if(result.cancelled)return{...result,message:'Abgebrochen; lokale und Cloud-Belege bleiben erhalten.'};
-  if(!result.deletedVersions){const confirmed=confirmLocal('Für diese Auswahl wurden keine Cloud-Kopien gefunden.');return{...result,confirmed,message:confirmed?'Keine Cloud-Kopien gefunden.':'Abgebrochen; lokale Belege bleiben erhalten. Keine Cloud-Kopien gefunden.'};}
-  return{...result,message:result.deletedReceipts+' Cloud-Beleg(e) und '+result.deletedVersions+' Cloud-Version(en) dauerhaft gelöscht. Lokale Löschung wird abgeschlossen.'};
+  return{...result,message:result.deletedVersions?result.deletedReceipts+' Cloud-Beleg(e) und '+result.deletedVersions+' Cloud-Version(en) dauerhaft gelöscht.':'Keine Cloud-Kopien gefunden; Löschmarkierungen für '+result.tombstonedReceipts+' Beleg(e) gesetzt.'};
  }finally{busy=false}
 }
 root.AuslagenDrive=Object.freeze({removeReceiptCopies});
