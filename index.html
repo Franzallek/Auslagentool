@@ -193,7 +193,7 @@ function toast(s){$('toast').textContent=s;$('toast').classList.remove('hidden')
 let conn=null;
 function idb(){return conn||(conn=new Promise((res,rej)=>{const r=indexedDB.open('auslagen',1);r.onupgradeneeded=()=>r.result.createObjectStore('receipts',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))}
 async function tx(mode,fn){const d=await idb();return new Promise((res,rej)=>{const t=d.transaction('receipts',mode),s=t.objectStore('receipts'),out=fn(s);t.oncomplete=()=>res(out&&out.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
-const dbAll=()=>tx('readonly',s=>s.getAll()),dbPut=list=>tx('readwrite',s=>{list.forEach(r=>s.put(r))}),dbDel=id=>tx('readwrite',s=>s.delete(id)),dbClear=()=>tx('readwrite',s=>s.clear());
+const dbAll=()=>tx('readonly',s=>s.getAll()),dbPut=list=>tx('readwrite',s=>{list.forEach(r=>s.put(r))}),dbDel=id=>tx('readwrite',s=>s.delete(id)),dbDelMany=ids=>tx('readwrite',s=>{ids.forEach(id=>s.delete(id))}),dbClear=()=>tx('readwrite',s=>s.clear());
 async function safe(fn){try{return await fn()}catch(e){alert('Speichern fehlgeschlagen: '+(e&&e.message||e)+'\nBitte Sicherung exportieren und Speicherplatz prüfen.');return false}}
 /* ---------- Navigation ---------- */
 function tab(t){document.querySelectorAll('main>section').forEach(x=>x.classList.toggle('hidden',x.id!==t));document.querySelectorAll('nav button').forEach(x=>{const on=x.dataset.tab===t;x.classList.toggle('active',on);if(on)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(t==='list')render();if(t==='export')engineInfo();window.scrollTo(0,0)}

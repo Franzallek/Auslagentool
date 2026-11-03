@@ -18,12 +18,14 @@ let purgeState={vault:'vaultA',base:{r1:await hash(r('A'))}},remoteMarkers=new S
  {fileId:'b1',receipt:{...r('B'),id:'r2'},hash:await hash({...r('B'),id:'r2'}),parent:null},
  {fileId:'b2',receipt:{...r('B2'),id:'r2'},hash:await hash({...r('B2'),id:'r2'}),parent:await hash({...r('B'),id:'r2'})}
 ],deleted=[],approved=true;
-const purgeIo={state:{load:()=>purgeState,save:s=>{purgeState=s}},confirm:async()=>approved,hash,
+let confirmation;
+const purgeIo={state:{load:()=>purgeState,save:s=>{purgeState=s}},confirm:async details=>{confirmation=details;return approved},hash,
  remote:{vault:async()=> 'vaultA',versionFiles:async()=>cloud.filter(v=>!deleted.includes(v.fileId)),versions:async()=>cloud.filter(v=>!deleted.includes(v.fileId)).map(({fileId,...v})=>v),purgedIds:async()=>[...remoteMarkers],markPurged:async ids=>ids.forEach(id=>remoteMarkers.add(id)),deleteFiles:async ids=>{deleted.push(...ids);return ids.length},append:async v=>{cloud.push({fileId:'new',...v})}},
  local:{all:async()=>[r('A')],put:async()=>{}},adopt:async()=>true};
-let purged=await purgeReceipts(purgeIo,[r('A')]);assert.equal(purged.deletedReceipts,1);assert.equal(purged.deletedVersions,2);assert.deepEqual(deleted,['a1','a2']);assert.equal(purgeState.cloudPurged.r1,true);assert.equal(cloud.filter(v=>!deleted.includes(v.fileId)).length,2);
+let purged=await purgeReceipts(purgeIo,[r('A')]);assert.equal(purged.deletedReceipts,1);assert.equal(purged.deletedVersions,2);assert.equal(purged.confirmed,true);assert.deepEqual(confirmation.localReceipts,[r('A')]);assert.deepEqual(deleted,['a1','a2']);assert.equal(purgeState.cloudPurged.r1,true);assert.equal(cloud.filter(v=>!deleted.includes(v.fileId)).length,2);
+purged=await purgeReceipts(purgeIo,[r('A')]);assert.equal(purged.deletedVersions,0);assert.equal(purged.confirmed,undefined);
 purgeState={vault:'vaultA',base:{}};let later=await reconcile(purgeIo);assert.equal(later.uploaded,0);assert.equal(later.conflicts.length,0);assert.equal(purgeState.cloudPurged.r1,true);assert.equal(remoteMarkers.has('r1'),true);
-approved=false;const beforeCancel=deleted.length;purged=await purgeReceipts(purgeIo,[{...r('B'),id:'r2'}]);assert.equal(purged.cancelled,true);assert.equal(deleted.length,beforeCancel);assert.equal(purgeState.cloudPurged.r2,undefined);
+approved=false;const beforeCancel=deleted.length;purged=await purgeReceipts(purgeIo,[{...r('B'),id:'r2'}]);assert.equal(purged.cancelled,true);assert.equal(purged.confirmed,undefined);assert.equal(deleted.length,beforeCancel);assert.equal(purgeState.cloudPurged.r2,undefined);
 approved=true;purgeIo.remote.vault=async()=> 'vaultB';await assert.rejects(purgeReceipts(purgeIo,[{...r('B'),id:'r2'}]),/nicht durch einen erfolgreichen Abgleich zugeordnet/);assert.equal(deleted.length,beforeCancel);
 purgeIo.remote.vault=async()=> 'vaultA';
 purgeIo.remote.deleteFiles=async ids=>{const first=ids[0];deleted.push(first);const e=Error('Netzwerkfehler');e.deletedFiles=1;e.totalFiles=ids.length;throw e};

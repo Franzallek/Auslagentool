@@ -133,7 +133,12 @@ function serialize(prims,rep,sig){
  const out=new Uint8Array(len);let p=0;for(const b of parts){out.set(b,p);p+=b.length}
  return out}
 function buildPdf(rep,opt){return serialize(layoutPages(rep,opt),rep,opt.signature)}
-const api={splitTax,buildReport,toCsv,buildPdf,layoutPages,serialize,range,pages,BASE};
+async function deleteConfirmedReceipts(receipts,removeCopies,deleteLocal){
+ const result=await removeCopies(receipts);
+ if(result.confirmed)await deleteLocal(receipts.map(r=>r.id));
+ return result;
+}
+const api={splitTax,buildReport,toCsv,buildPdf,layoutPages,serialize,range,pages,deleteConfirmedReceipts,BASE};
 if(typeof module!=='undefined'&&module.exports){module.exports=api;return}
 if(typeof document==='undefined')return;
 /* ---------- Oberfläche ---------- */
@@ -225,14 +230,14 @@ function done(box,rep,pdf,csv,prims,sigCanvas,mf,receipts){
  const act=el('div','actions'),p=el('button','','PDF herunterladen'),c=el('button','secondary','CSV herunterladen'),re=el('button','secondary','Unterschrift ändern'),x=el('button','secondary','Schließen');
  [p,c,re,x].forEach(b=>{b.type='button'});
  let packageOption=null;
- p.onclick=async()=>{if(p.disabled)return;p.disabled=true;let downloaded=false;try{let output=pdf;if(packageOption?.checked){if(!root.ReceiptPdf||typeof root.ReceiptPdf.buildReportPackage!=='function')throw Error('Die PDF-Funktion für Beleganhänge ist nicht verfügbar.');purgeStatus.textContent='Gesamt-PDF mit Kalkulation und Belegdateien wird erstellt …';output=await root.ReceiptPdf.buildReportPackage(pdf,receipts,text=>{purgeStatus.textContent=text})}download(output,base+'.pdf','application/pdf');downloaded=true;if(packageOption?.checked){purgeStatus.textContent='PDF-Download gestartet. Cloud-Kopien werden nur nach deiner ausdrücklichen Bestätigung gelöscht.';const result=await root.AuslagenDrive.removeReceiptCopies(receipts);purgeStatus.textContent=result.message}else purgeStatus.textContent='PDF-Download wurde gestartet.'}catch(e){const deleted=Number(e&&e.deletedFiles)||0,total=Number(e&&e.totalFiles)||0;purgeStatus.textContent=(downloaded?'PDF wurde heruntergeladen. Cloud-Löschung nicht vollständig: ':'PDF-Export fehlgeschlagen: ')+(e&&e.message||e)+(downloaded&&total?' ('+deleted+' von '+total+' Versionen gelöscht). Erneut PDF-Download starten, um den Löschversuch zu wiederholen.':'')}finally{p.disabled=false}};
+ p.onclick=async()=>{if(p.disabled)return;p.disabled=true;let downloaded=false;try{let output=pdf;if(packageOption?.checked){if(!root.ReceiptPdf||typeof root.ReceiptPdf.buildReportPackage!=='function')throw Error('Die PDF-Funktion für Beleganhänge ist nicht verfügbar.');purgeStatus.textContent='Gesamt-PDF mit Kalkulation und Belegdateien wird erstellt …';output=await root.ReceiptPdf.buildReportPackage(pdf,receipts,text=>{purgeStatus.textContent=text})}download(output,base+'.pdf','application/pdf');downloaded=true;if(packageOption?.checked){purgeStatus.textContent='PDF-Download gestartet. Belege werden nur nach deiner ausdrücklichen Bestätigung gelöscht.';const result=await deleteConfirmedReceipts(receipts,r=>root.AuslagenDrive.removeReceiptCopies(r),ids=>dbDelMany(ids));if(result.confirmed){const ids=receipts.map(r=>r.id);db=db.filter(r=>!ids.includes(r.id));ids.forEach(id=>selected.delete(id));close();tab('list');toast(receipts.length+' exportierte Beleg(e) wurden dauerhaft gelöscht.'+(result.cloudSkipped?' Cloud-Kopien wurden nicht gelöscht.':''))}else purgeStatus.textContent=result.message}else purgeStatus.textContent='PDF-Download wurde gestartet.'}catch(e){const deleted=Number(e&&e.deletedFiles)||0,total=Number(e&&e.totalFiles)||0;purgeStatus.textContent=(downloaded?'PDF wurde erstellt, aber die Beleglöschung ist fehlgeschlagen: ':'PDF-Export fehlgeschlagen: ')+(e&&e.message||e)+(downloaded&&total?' ('+deleted+' von '+total+' Cloud-Versionen gelöscht). Erneut PDF-Download starten, um den Löschversuch zu wiederholen.':'')}finally{p.disabled=false}};
  c.onclick=()=>download(csv,base+'.csv','text/csv;charset=utf-8');re.onclick=()=>sign(box,rep,mf,receipts);x.onclick=close;
  act.append(p,c);
  const purgeStatus=el('p','sub');purgeStatus.setAttribute('role','status');
  if(root.AuslagenDrive&&typeof root.AuslagenDrive.removeReceiptCopies==='function'){
-  const optionLabel=el('label','rp-option','Gesamt-PDF erstellen (Kalkulation + ausgewählte Belegdateien) und Cloud-Kopien anschließend löschen');
+  const optionLabel=el('label','rp-option','Gesamt-PDF erstellen und Belege nach Bestätigung dauerhaft löschen');
   packageOption=el('input');packageOption.type='checkbox';packageOption.id='rp_full_package';optionLabel.setAttribute('for',packageOption.id);optionLabel.prepend(packageOption);
-  box.append(optionLabel,el('p','sub','Bei Aktivierung enthält die heruntergeladene PDF zuerst die unterschriebene Kalkulation und danach die ausgewählten Belegdateien. Erst danach fragt die App gesondert nach, bevor Cloud-Kopien dauerhaft gelöscht werden. Wenn du die Löschung ablehnst, bleibt das heruntergeladene PDF erhalten. Lokale Belege werden nicht gelöscht; die Funktion benötigt eine bestätigte Zuordnung zum Google Drive.'));
+  box.append(optionLabel,el('p','sub','Bei Aktivierung enthält die heruntergeladene PDF zuerst die unterschriebene Kalkulation und danach die ausgewählten Belegdateien. Nach dem Download fragt die App, bevor die ausgewählten Belege lokal und, falls verbunden, in Google Drive dauerhaft gelöscht werden. Ohne bestätigte Löschung bleiben die lokalen Belege erhalten; bei nicht zugeordnetem Drive weist die App darauf hin, dass dortige Kopien nicht gelöscht werden.'));
  }
  box.append(purgeStatus);
  try{const files=[new File([pdf],base+'.pdf',{type:'application/pdf'}),new File([csv],base+'.csv',{type:'text/csv'})];

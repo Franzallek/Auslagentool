@@ -33,3 +33,14 @@ const many=[];for(let i=0;i<47;i++)many.push(rec('2026-09-'+String(1+i%28).padSt
 const big=R.buildReport(many.map(r=>({...r,gross:r.net+r.tax})),'Müller (Test)','2026-10-02');
 if(process.argv[3])fs.writeFileSync(process.argv[3],R.buildPdf(big,{measure,signature:null}));
 console.log(n+' report tests passed');
+(async()=>{
+ const receipts=[{id:'one'},{id:'two'}],deleted=[];
+ let result=await R.deleteConfirmedReceipts(receipts,async()=>({confirmed:true}),async ids=>deleted.push(...ids));
+ assert.deepEqual(deleted,['one','two']);assert.equal(result.confirmed,true);
+ deleted.length=0;
+ result=await R.deleteConfirmedReceipts(receipts,async()=>({confirmed:false}),async ids=>deleted.push(...ids));
+ assert.deepEqual(deleted,[]);assert.equal(result.confirmed,false);
+ await assert.rejects(R.deleteConfirmedReceipts(receipts,async()=>{throw Error('Cloud-Löschung fehlgeschlagen')},async ids=>deleted.push(...ids)),/Cloud-Löschung fehlgeschlagen/);
+ assert.deepEqual(deleted,[]);
+ console.log('PASS local receipts are deleted only after explicit export confirmation');
+})().catch(error=>{process.stderr.write(error.stack+'\n');process.exitCode=1});
