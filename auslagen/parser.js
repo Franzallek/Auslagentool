@@ -50,6 +50,17 @@ function parsePurpose(lines){
  }
  return{value:found.length===1?found[0].value:null,items:found.map(item=>item.value)};
 }
+function parseFuelItems(lines){
+ const patterns=[
+  {name:'Diesel',pattern:/\bdiesel\b|\bdiesel[-\s]?kraftstoff\b/i},
+  {name:'Super E10',pattern:/\bsuper\s*e\s?10\b|\be\s?10\b|\bbenzin\s*e\s?10\b/i},
+  {name:'Super E5',pattern:/\bsuper\s*e\s?5\b|\be\s?5\b|\bbenzin\s*e\s?5\b/i},
+  {name:'Super',pattern:/\bsuper\b|\bbenzin\b/i}
+ ];
+ const text=lines.join('\n');
+ const found=patterns.filter(item=>item.pattern.test(text)).map(item=>item.name);
+ return found.filter((name,index)=>!(name==='Super'&&found.some(other=>other==='Super E5'||other==='Super E10')));
+}
 function parseInvoiceNo(text){const m=text.match(/(?:rechnungs?\s*-?\s*(?:nr|nummer|no)\.?|re\.?\s*-?\s*nr\.?|beleg\s*-?\s*(?:nr|nummer)\.?|invoice\s*(?:no|number|#)\.?|bon\s*-?\s*nr\.?)\s*[:.#]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,30})/i);
  if(!m)return null;const v=m[1].replace(/[.\-\/_]+$/,'');return/^(datum|date|kunde|vom)$/i.test(v)?null:{value:v,conf:'check'}}
 function parseCurrency(text){const c={EUR:(text.match(/€|\bEUR\b/gi)||[]).length,USD:(text.match(/\$|\bUSD\b/gi)||[]).length,GBP:(text.match(/£|\bGBP\b/gi)||[]).length,CHF:(text.match(/\bCHF\b/gi)||[]).length};
@@ -74,9 +85,9 @@ function taxGroups(lines){const groups=[],loose=[];const kw=/mwst|m\.w\.st|ust|u
  const seen=new Set(),uniq=groups.filter(g=>{const k=g.rate+'|'+g.tax;if(seen.has(k))return false;seen.add(k);return true});
  return{groups:uniq,loose:[...new Set(loose)]}}
 function parse(text,now){text=String(text||'').replace(/\r/g,'');const lines=text.split('\n').map(l=>l.replace(/[ \t]+/g,' ').trim()).filter(Boolean);
- const purpose=parsePurpose(lines),res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],purpose:purpose.items.length?{value:purpose.value,items:purpose.items,conf:'check'}:null,notes:[]};
- if(purpose.value)res.notes.push('Ein einzelner Artikel wurde als Auslagenzweck vorgeschlagen. Bitte prüfen.');
- else if(purpose.items.length>1)res.notes.push('Mehrere mögliche Artikel erkannt. Bitte im Auswahlfeld die passenden Artikel auswählen.');
+ const purpose=parsePurpose(lines),fuelItems=parseFuelItems(lines),itemNames=fuelItems.length?fuelItems:purpose.items,res={date:parseDate(lines,now),vendor:parseVendor(lines),invoice:parseInvoiceNo(text),currency:parseCurrency(text),gross:null,net:null,tax:null,taxes:[],purpose:itemNames.length?{value:itemNames.length===1?itemNames[0]:null,items:itemNames,conf:'check'}:null,notes:[]};
+ if(itemNames.length===1)res.notes.push('Ein einzelner Artikel wurde als Auslagenzweck vorgeschlagen. Bitte prüfen.');
+ else if(itemNames.length>1)res.notes.push('Mehrere mögliche Artikel erkannt. Bitte im Auswahlfeld die passenden Artikel auswählen.');
  else res.notes.push('Auslagenzweck nicht automatisch erkannt. Bitte ergänzen.');
  const G=grossCands(lines).sort((a,b)=>b.w-a.w||b.c-a.c),N=netCands(lines),{groups,loose}=taxGroups(lines);
  const groupSum=groups.length?groups.reduce((s,g)=>s+g.tax,0):null;

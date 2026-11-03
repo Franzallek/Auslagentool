@@ -53,6 +53,12 @@ kauf 3,50
 for(const [k,v] of Object.entries(S)){const r=P.parse(v,now);console.log('==',k);console.log(JSON.stringify(r))}
 assert.equal(P.parse(S.rechnung,now).purpose.value,'Druckerpapier');
 assert.equal(P.parse(S.tank,now).purpose.value,'Super E10');
+assert.deepEqual(P.parse('Tankstelle\nSuper E 10 25,00 l\n45,00 EUR',now).purpose.items,['Super E10']);
+assert.deepEqual(P.parse('Tankstelle\nE10 25,00 l\n45,00 EUR',now).purpose.items,['Super E10']);
+const mixedFuel=P.parse('Tankstelle\nSuper E5 20,00 l\nDiesel 10,00 l',now);
+assert.deepEqual(mixedFuel.purpose.items,['Diesel','Super E5']);
+assert.ok(mixedFuel.notes.some(note=>note.includes('Auswahlfeld')));
+assert.deepEqual(P.parse('Tankstelle\nSuper 20,00 l\nDiesel 10,00 l',now).purpose.items,['Diesel','Super']);
 const several=P.parse(S.kassenbon,now);
 assert.deepEqual(several.purpose.items,['Brot','Milch','Wasser']);
 assert.ok(several.notes.some(note=>note.includes('Auswahlfeld')));
