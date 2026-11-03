@@ -1,12 +1,12 @@
 # Auslagentool
 
-Privates Werkzeug zum Erfassen von Auslagenbelegen. Die Standard-Speicherung erfolgt lokal im Browser (IndexedDB); Texterkennung und PDF-Erstellung laufen auf dem Gerät. Die App enthält außerdem einen ausdrücklich manuell gestarteten Google-Drive-Abgleich für Testdaten. Dieser Entwicklungsabgleich ist nicht für echte Belege freigegeben.
+Privates Werkzeug zum Erfassen von Auslagenbelegen. Die Speicherung erfolgt lokal im Browser (IndexedDB); Texterkennung und PDF-Erstellung laufen auf dem Gerät. Der manuell gestartete Google-Drive-Abgleich befindet sich weiterhin in Entwicklung und ist nicht für echte Belege freigegeben.
 
 ## Status und Auslieferung
 
-Das Projekt ist nicht für die Öffentlichkeit freigegeben. Der Workflow für `preview/once` veröffentlicht bei jedem Push auf diesen Branch eine GitHub-Pages-Vorschau ohne Zugriffssperre. `noindex` verhindert keine Zugriffe und ist kein Datenschutz- oder Zugriffsschutz. Es wurde in dieser Arbeit nichts gepusht oder veröffentlicht.
+Das Projekt ist nicht als öffentlicher Dienst freigegeben. Die GitHub-Pages-Vorschau auf `preview/once` ist öffentlich und ohne Zugriffssperre erreichbar; nur fiktive Testdaten verwenden. `noindex` verhindert weder Zugriffe noch ersetzt es Datenschutz- oder Zugriffsschutz. Ein erfolgreicher Vorschau-Deploy ist keine Produktivfreigabe.
 
-Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. `.github/workflows/pages.yml` führt Prüfungen aus, deployt aber nicht. `.github/workflows/preview.yml` deployt ausschließlich `preview/once`.
+Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. Der Entwicklungsabgleich wird nur manuell nach Bestätigung gestartet. In der finalen unterschriebenen PDF-Vorschau kann die PDF zuerst heruntergeladen und danach optional mit einer separaten Bestätigung jede Cloud-Version der darin enthaltenen Belege dauerhaft aus dem verbundenen Google-Drive-App-Ordner gelöscht werden. Lokale Belege und die heruntergeladene PDF bleiben erhalten. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass andere Geräte die entfernten Belege erneut hochladen; andere Geräte können weiterhin lokale Kopien besitzen.
 
 ## Gestaltung
 
@@ -21,7 +21,7 @@ Der bestehende Export „Erstattung erstellen (PDF + CSV)“ sowie CSV- und JSON
 ## Struktur
 
 - `index.html`: tatsächlich ausgelieferte App-Einstiegsseite
-- `auslagen/`: Parser, lokale PDF-/OCR-Bibliotheken, Service Worker, Synchronisierung und Exportlogik
+- `auslagen/`: Parser, lokale PDF-/OCR-Bibliotheken, Service Worker, Entwicklungs-Synchronisierung und Exportlogik
 - `vendor/`: lokale OCR-Dateien; der Preview-Build ergänzt die PDF.js-Dateien aus `auslagen/vendor/`
 - `.github/workflows/preview.yml`: Prüfungen und Vorschau-Deployment ausschließlich für `preview/once`
 - `.github/workflows/pages.yml`: Entwicklungsprüfungen ohne Deployment
@@ -39,7 +39,7 @@ Mit Node.js aus dem Repository-Root:
 - `node auslagen/receipt-pdf.test.cjs`
 - `node auslagen/pdfimport.test.cjs`
 
-Die Browseroberfläche und die Wiederherstellung im Offline-/Flugmodus müssen zusätzlich auf den Zielgeräten geprüft werden. Diese lokale Reparatur ersetzt keine Go-Live-Freigabe.
+Die Browseroberfläche und die Wiederherstellung im Offline-/Flugmodus müssen zusätzlich auf den Zielgeräten geprüft werden. Die Nutzenden sind für den manuellen Export und die sichere Aufbewahrung ihrer JSON-Sicherungen verantwortlich; es gibt keinen automatischen Backup-Dienst. Die Cloud-Löschfunktion ist nicht atomar: Bei einem Verbindungsfehler kann ein Teil der Cloud-Versionen bereits gelöscht sein. Die App schreibt zuerst einen minimalen Cloud-Löschvermerk, behält eine lokale Sperrmarkierung bei, zeigt den Teilerfolg an und erlaubt einen erneuten Löschversuch. Diese lokale Reparatur ersetzt keine Go-Live-Freigabe.
 
 ## Grenzen
 

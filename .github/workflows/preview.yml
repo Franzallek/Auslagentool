@@ -85,6 +85,14 @@ jobs:
           cp index.html _site/index.html
           cp -r vendor _site/vendor
           rm -f _site/*.test.cjs _site/setup-vendor.mjs _site/setup-vendor.sh _site/_headers _site/README.md
+          for asset in sync-config.js sync.js; do
+            test -s "_site/$asset" || { echo "Fehlendes App-Asset: $asset"; exit 1; }
+            grep -Fq "src=\"$asset\"" _site/index.html || { echo "App-Einstieg laedt $asset nicht."; exit 1; }
+          done
+          if ! grep -Fq 'Dauerhaft aus dem verbundenen Google Drive löschen?' _site/sync.js; then
+            echo "Cloud-Loeschhinweis fehlt im Sync-Modul."
+            exit 1
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

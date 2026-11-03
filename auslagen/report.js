@@ -179,9 +179,9 @@ function open(){
  inp.addEventListener('input',refresh);refresh();inp.focus();
  cancel.onclick=close;
  back.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
- next.onclick=()=>{localStorage.setItem(NAME_KEY,inp.value.trim());rep=buildReport(chosen,inp.value,todayIso());sign(box,rep,mf)};
+ next.onclick=()=>{localStorage.setItem(NAME_KEY,inp.value.trim());rep=buildReport(chosen,inp.value,todayIso());sign(box,rep,mf,chosen)};
 }
-function sign(box,rep,mf){
+function sign(box,rep,mf,receipts){
  box.replaceChildren(el('h2','','Unterschrift'));
  box.append(el('p','rp-rotate','Bitte das Handy quer halten, um zu unterschreiben.'));
  const wrap=el('div','rp-sig'),canvas=el('canvas','rp-pad');canvas.setAttribute('aria-label','Unterschriftenfeld mit Unterschriftslinie');wrap.append(canvas);
@@ -214,18 +214,28 @@ function sign(box,rep,mf){
    for(const s of strokes){c.beginPath();s.forEach((p,i)=>i?c.lineTo(p.x*k,p.y*k):c.moveTo(p.x*k,p.y*k));if(s.length===1)c.lineTo(s[0].x*k+0.1,s[0].y*k);c.stroke()}
    const b64=oc.toDataURL('image/jpeg',0.92).split(',')[1],bin=atob(b64),bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
    const sig={bytes,width:W2,height:H2,baseline:BASE},prims=layoutPages(rep,{measure:mf,signature:sig}),pdf=serialize(prims,rep,sig),csv=new TextEncoder().encode(toCsv(rep));
-   done(box,rep,pdf,csv,prims,oc,mf)}
+   done(box,rep,pdf,csv,prims,oc,mf,receipts)}
   catch(e){msg.textContent='Export fehlgeschlagen: '+(e&&e.message||e);go.disabled=false}};
 }
-function done(box,rep,pdf,csv,prims,sigCanvas,mf){
+function done(box,rep,pdf,csv,prims,sigCanvas,mf,receipts){
  const base='Auslagenerstattung_'+safe(rep.name)+'_'+rep.created;
  box.replaceChildren(el('h2','','Vorschau und Export'));
  box.append(el('p','sub',rep.rows.length+' Beleg(e), Zeitraum '+rep.rangeText+', Erstattungssumme '+eur(rep.totals.gross)+', Summe Ust '+eur(rep.totals.ust)+'. Die Belege wurden nicht als eingereicht markiert. Die Vorschau zeigt den Inhalt der PDF.'));
  const pv=el('div','rp-pv');box.append(pv);renderPreview(pv,prims,sigCanvas);
  const act=el('div','actions'),p=el('button','','PDF herunterladen'),c=el('button','secondary','CSV herunterladen'),re=el('button','secondary','Unterschrift ändern'),x=el('button','secondary','Schließen');
  [p,c,re,x].forEach(b=>{b.type='button'});
- p.onclick=()=>download(pdf,base+'.pdf','application/pdf');c.onclick=()=>download(csv,base+'.csv','text/csv;charset=utf-8');re.onclick=()=>sign(box,rep,mf);x.onclick=close;
+ let pdfDownloadStarted=false;
+ p.onclick=()=>{download(pdf,base+'.pdf','application/pdf');pdfDownloadStarted=true;if(purge){purge.disabled=false;purgeStatus.textContent='PDF-Download wurde gestartet. Prüfe, dass die Datei gespeichert wurde, bevor du Cloud-Kopien löschst.'}};
+ c.onclick=()=>download(csv,base+'.csv','text/csv;charset=utf-8');re.onclick=()=>sign(box,rep,mf,receipts);x.onclick=close;
  act.append(p,c);
+ const purgeStatus=el('p','sub');purgeStatus.setAttribute('role','status');
+ let purge=null;
+ if(root.AuslagenDrive&&typeof root.AuslagenDrive.removeReceiptCopies==='function'){
+  const hint=el('p','sub','Optional: Lade zuerst die unterschriebene PDF herunter. Danach kannst du alle Cloud-Versionen der darin enthaltenen Belege dauerhaft aus dem verbundenen Google Drive löschen. Ein minimaler Löschvermerk mit der Beleg-ID bleibt, damit andere Geräte diese Belege nicht erneut hochladen. Lokale Belege bleiben auf diesem Gerät erhalten.');
+  purge=el('button','danger','Cloud-Kopien dieser PDF-Belege dauerhaft löschen');purge.type='button';purge.disabled=true;
+  purge.onclick=async()=>{if(!pdfDownloadStarted){purgeStatus.textContent='Bitte zuerst die PDF herunterladen.';return}purge.disabled=true;purgeStatus.textContent='Google Drive wird geprüft …';try{const result=await root.AuslagenDrive.removeReceiptCopies(receipts);purgeStatus.textContent=result.message;if(result.cancelled||!result.deletedVersions)purge.disabled=false;}catch(e){const deleted=Number(e&&e.deletedFiles)||0,total=Number(e&&e.totalFiles)||0;purgeStatus.textContent='Cloud-Löschung nicht vollständig: '+(e&&e.message||e)+(total?' ('+deleted+' von '+total+' Versionen gelöscht). Erneut versuchen, um verbleibende Versionen zu entfernen.':'');purge.disabled=false}};
+  box.append(hint,purge,purgeStatus);
+ }
  try{const files=[new File([pdf],base+'.pdf',{type:'application/pdf'}),new File([csv],base+'.csv',{type:'text/csv'})];
   if(navigator.canShare&&navigator.canShare({files})){const s=el('button','secondary','Teilen …');s.type='button';s.onclick=()=>navigator.share({files,title:'Auslagenerstattung'}).catch(()=>{});act.append(s)}}catch(e){}
  act.append(re,x);box.append(act);
