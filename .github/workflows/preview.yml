@@ -92,8 +92,8 @@ jobs:
             test -s "_site/$asset" || { echo "Fehlendes App-Asset: $asset"; exit 1; }
             grep -Fq "src=\"$asset\"" _site/index.html || { echo "App-Einstieg laedt $asset nicht."; exit 1; }
           done
-          if ! grep -Fq 'PDF wurde erstellt. Ausgewählte Belege und Bilder dauerhaft löschen?' _site/sync.js; then
-            echo "Cloud-Loeschhinweis fehlt im Sync-Modul."
+          if ! grep -Fq 'for(const id of chosen.keys())cloudPurged[id]=true;' _site/sync.js; then
+            echo "Explizite Loeschmarkierungen fehlen im Sync-Modul."
             exit 1
           fi
       - uses: actions/upload-pages-artifact@v3
