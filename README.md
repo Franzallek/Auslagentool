@@ -4,9 +4,10 @@ Privates Werkzeug zum Erfassen von Auslagenbelegen. Die Speicherung erfolgt loka
 
 ## Status und Auslieferung
 
-Das Projekt ist nicht als öffentlicher Dienst freigegeben. Die GitHub-Pages-Vorschau auf `preview/once` ist öffentlich und ohne Zugriffssperre erreichbar; nur fiktive Testdaten verwenden. `noindex` verhindert weder Zugriffe noch ersetzt es Datenschutz- oder Zugriffsschutz. Ein erfolgreicher Vorschau-Deploy ist keine Produktivfreigabe.
+Das Projekt ist nicht als Produktivdienst freigegeben. Die GitHub-Pages-Seite auf `preview/once` ist öffentlich und ohne Zugriffssperre erreichbar; bis zur Abnahme nur fiktive Testdaten verwenden. `noindex` verhindert weder Zugriffe noch ersetzt es Datenschutz- oder Zugriffsschutz. Ein erfolgreicher Vorschau-Deploy ist keine Produktivfreigabe. Der ausführliche Datenschutz- und Demo-Hinweis erscheint als Overlay beim Überfahren oder Fokussieren des Info-Symbols neben „Privates Werkzeug“; auf Touch-Geräten lässt er sich antippen.
 
-Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. Der Entwicklungsabgleich wird nur manuell nach Bestätigung gestartet. In der finalen unterschriebenen PDF-Vorschau kann die PDF zuerst heruntergeladen und danach optional mit einer separaten Bestätigung jede Cloud-Version der darin enthaltenen Belege dauerhaft aus dem verbundenen Google-Drive-App-Ordner gelöscht werden. Lokale Belege und die heruntergeladene PDF bleiben erhalten. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass andere Geräte die entfernten Belege erneut hochladen; andere Geräte können weiterhin lokale Kopien besitzen.
+Die ausgelieferte Einstiegsseite ist das Root-`index.html`. Der Preview-Workflow kopiert die unterstützenden App-Dateien aus `auslagen/` und überschreibt die kopierte Einstiegsseite anschließend mit Root-`index.html`. Beim Öffnen erscheint ein kurzer, optionaler Google-Drive-Dialog mit „Jetzt verbinden“ und „Später“. Ohne ausdrückliche Auswahl wird Google nicht geladen. Danach bleibt der Google-Drive-Bereich mit der Verbindungsoption sichtbar. Nach erfolgreichem Abgleich merkt sich die App lokal die bestätigte Google-E-Mail-Adresse und zeigt sie beim nächsten Öffnen an. Das ist nur eine lokale Anzeige, keine aktive Anmeldung; Passwort und OAuth-Token werden nicht gespeichert. Der Abgleich läuft direkt zwischen Browser und dem angemeldeten persönlichen Google-Drive-App-Ordner; es gibt keinen zentralen App-Server oder eine gemeinsame Belegsammlung. Trotzdem ist die Website selbst öffentlich. Belege in IndexedDB sind für alle sichtbar, die dasselbe Browserprofil verwenden. Personen müssen eigene Geräte/Browserprofile und jeweils ihr eigenes Google-Konto verwenden; das ist keine serverseitige Nutzeranmeldung oder Zugangssperre. Der Abgleich bleibt bis zu erfolgreichen Mehrkonten-, Wiederherstellungs- und Geräteprüfungen ein Testverfahren. In der finalen unterschriebenen PDF-Vorschau kann die PDF zuerst heruntergeladen und danach optional mit einer separaten Bestätigung jede Cloud-Version der darin enthaltenen Belege dauerhaft aus dem verbundenen Google-Drive-App-Ordner gelöscht werden. Lokale Belege und die heruntergeladene PDF bleiben erhalten. Ein minimaler Cloud-Löschvermerk mit Beleg-ID verhindert, dass andere Geräte die entfernten Belege erneut hochladen; andere Geräte können weiterhin lokale Kopien besitzen.
+Die Rechnungsfelder sind beim Start zunächst verborgen und erscheinen erst nach Auswahl eines Rechnungsbilds oder einer PDF-Datei. Beim Bearbeiten eines vorhandenen Belegs werden sie direkt angezeigt.
 
 ## Gestaltung
 
@@ -16,6 +17,8 @@ Die Oberfläche verwendet die Palette „Ocean Precision“ mit Marineblau, Wass
 
 Unter „Meine Auslagen“ die gewünschten Belege markieren und „Belegkopien als Sammel-PDF“ wählen. Das PDF enthält nur die zugehörigen Bildseiten: jedes Bild als eigene Seite und bei Original-PDF-Anhängen jede PDF-Seite. Die Erstellung erfolgt lokal; es werden keine Belege hochgeladen und Bearbeitungsstände oder gespeicherte Dateien nicht verändert. Fehlt bei einem ausgewählten Beleg eine Datei oder ist eine Datei nicht lesbar, wird kein unvollständiges PDF erzeugt. Zum Schutz vor Speicherüberlastung gelten Grenzen von 50 MB ausgewählten Quelldateien, 80 MB PDF-Ausgabe und 250 Seiten; bei Überschreitung wird der Export mit einer Fehlermeldung abgebrochen.
 
+Im unterschriebenen PDF-Checkout kann optional „Gesamt-PDF erstellen“ aktiviert werden. Dann enthält der Download zuerst die unterschriebene Kalkulation und danach die ausgewählten Belegdateien als PDF-Seiten. Nach dem Start des Downloads fragt die App gesondert nach, bevor die Cloud-Kopien dieser Belege dauerhaft gelöscht werden. Wird die Löschung abgelehnt oder schlägt sie fehl, bleibt das lokale Original erhalten; bei einem unvollständigen Cloud-Löschvorgang wird der Teilerfolg angezeigt und ein erneuter Versuch ermöglicht.
+
 Der bestehende Export „Erstattung erstellen (PDF + CSV)“ sowie CSV- und JSON-Sicherungen bleiben davon getrennt.
 
 ## Struktur
@@ -24,7 +27,7 @@ Der bestehende Export „Erstattung erstellen (PDF + CSV)“ sowie CSV- und JSON
 - `auslagen/`: Parser, lokale PDF-/OCR-Bibliotheken, Service Worker, Entwicklungs-Synchronisierung und Exportlogik
 - `vendor/`: lokale OCR-Dateien; der Preview-Build ergänzt die PDF.js-Dateien aus `auslagen/vendor/`
 - `.github/workflows/preview.yml`: Prüfungen und Vorschau-Deployment ausschließlich für `preview/once`
-- `.github/workflows/pages.yml`: Entwicklungsprüfungen ohne Deployment
+- `.github/workflows/pages.yml`: prüft Pull Requests und soll nur nach erfolgreichem Push auf `main` veröffentlichen; dieser vorbereitete Workflow ist noch nicht auf GitHub ausgeführt
 
 ## Tests
 

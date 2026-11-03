@@ -47,7 +47,12 @@ function buildPdf(pages){
  write(xrefTable);
  return out
 }
-const api={buildPdf};
+function buildPackagePdf(reportPages,receiptPages){
+ if(!Array.isArray(reportPages)||!reportPages.length)throw Error('Kalkulation enthält keine PDF-Seiten.');
+ if(!Array.isArray(receiptPages)||!receiptPages.length)throw Error('Keine Belegseiten für das PDF vorhanden.');
+ return buildPdf([...reportPages,...receiptPages])
+}
+const api={buildPdf,buildPackagePdf};
 if(typeof module!=='undefined'&&module.exports){module.exports=api;return}
 root.ReceiptPdf=api;
 if(typeof document==='undefined')return;
@@ -99,9 +104,9 @@ async function getPdfJs(){
  }
  return pdfjsPromise
 }
-async function pdfPages(file,limit,onPage){
+async function pdfBytesPages(bytes,limit,onPage){
  const lib=await getPdfJs();let doc;
- try{doc=await lib.getDocument({data:dataBytes(file)}).promise}
+ try{doc=await lib.getDocument({data:bytes}).promise}
  catch(e){throw Error('PDF-Anhang kann nicht gelesen werden (beschädigt, passwortgeschützt oder nicht unterstützt).')}
  const pages=[];
  try{
@@ -121,6 +126,31 @@ async function pdfPages(file,limit,onPage){
   return pages
  }finally{await doc.destroy()}
 }
+async function pdfPages(file,limit,onPage){return pdfBytesPages(dataBytes(file),limit,onPage)}
+async function buildReportPackage(reportBytes,receipts,onPage){
+ if(!(reportBytes instanceof Uint8Array)||!reportBytes.length)throw Error('Kalkulations-PDF fehlt.');
+ if(!Array.isArray(receipts)||!receipts.length)throw Error('Keine Belege für das Gesamt-PDF ausgewählt.');
+ let sourceBytes=0;
+ for(const receipt of receipts){
+  if(!receipt.file||typeof receipt.file.data!=='string')throw Error('Belegdatei fehlt oder ist beschädigt: '+(receipt.vendor||'Unbekannter Beleg')+'.');
+  const length=Math.floor((receipt.file.data.length-receipt.file.data.indexOf(',')-1)*0.75);
+  sourceBytes+=length;
+  if(sourceBytes>MAX_SOURCE_BYTES)throw Error('Die ausgewählten Belegdateien überschreiten 50 MB. Bitte weniger Belege auswählen.');
+  if(receipt.file.type!=='application/pdf'&&!/^image\/[a-z0-9.+-]+$/i.test(receipt.file.type))throw Error('Nicht unterstütztes Belegformat bei '+(receipt.vendor||'Unbekannter Beleg')+': '+receipt.file.type+'.');
+ }
+ const reportPages=await pdfBytesPages(reportBytes,MAX_PAGES,(n,total)=>onPage&&onPage('Kalkulation · Seite '+n+'/'+total));
+ if(reportPages.length>=MAX_PAGES)throw Error('Das Gesamt-PDF überschreitet die Grenze von '+MAX_PAGES+' Seiten.');
+ const receiptPages=[];
+ for(let i=0;i<receipts.length;i++){
+  const receipt=receipts[i],limit=MAX_PAGES-reportPages.length-receiptPages.length;
+  if(limit<=0)throw Error('Das Gesamt-PDF überschreitet die Grenze von '+MAX_PAGES+' Seiten.');
+  if(onPage)onPage('Beleg '+(i+1)+'/'+receipts.length+' · '+(receipt.vendor||'Beleg'));
+  if(receipt.file.type==='application/pdf')receiptPages.push(...await pdfPages(receipt.file,limit));
+  else receiptPages.push(...await imagePage(receipt.file));
+ }
+ return buildPackagePdf(reportPages,receiptPages)
+}
+api.buildReportPackage=buildReportPackage;
 function status(text){const node=document.getElementById('selectionInfo');if(node)node.textContent=text}
 function download(bytes){
  const d=new Date(),date=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10),name='Belegkopien_'+date+'.pdf';

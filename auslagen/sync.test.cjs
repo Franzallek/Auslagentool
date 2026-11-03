@@ -2,13 +2,15 @@ const assert=require('node:assert/strict');
 const {reconcile,purgeReceipts,canonical,valid}=require('./sync.js');
 const r=n=>({id:'r1',vendor:n,date:'2026-11-02',invoice:'',project:'',purpose:'',currency:'EUR',net:100,tax:19,gross:119,status:'Entwurf',taxes:[]});
 const hash=async x=>canonical(x);
-(async()=>{let local=[r('A')],state={},versions=[];const io={local:{all:async()=>local,put:async r=>{local=[r]}},remote:{vault:async()=> 'vaultA',versions:async()=>versions,purgedIds:async()=>[],append:async v=>versions.push(v)},hash,state:{load:()=>state,save:s=>{state=s}},adopt:async()=>true};
+(async()=>{let local=[r('A')],state={},versions=[],currentVault='vaultA',currentAccount={sub:'google-user-a',email:'a@example.test'},vaultCreateRequests=[];const io={account:()=>currentAccount,local:{all:async()=>local,put:async r=>{local=[r]}},remote:{vault:async createIfMissing=>{vaultCreateRequests.push(createIfMissing);return currentVault},versions:async()=>versions,purgedIds:async()=>[],append:async v=>versions.push(v)},hash,state:{load:()=>state,save:s=>{state=s}},adopt:async()=>true};
 assert(valid(r('A')));assert(!valid({...r('A'),gross:5}));
 let s=await reconcile(io);assert.equal(s.uploaded,1);assert.equal(state.vault,'vaultA');
+assert.deepEqual(state.account,{sub:'google-user-a',email:'a@example.test'});
 local=[];s=await reconcile(io);assert.equal(s.downloaded,1);assert.equal(versions.length,1);
 local=[r('B')];s=await reconcile(io);assert.equal(s.uploaded,1);assert.equal(versions.length,2);
 const baseline=versions[1].hash;local=[r('C')];versions.push({receipt:r('D'),hash:await hash(r('D')),parent:baseline});s=await reconcile(io);assert.equal(s.conflicts.length,1);assert.equal(local[0].vendor,'C');
-const count=versions.length;io.remote.vault=async()=> 'vaultB';await assert.rejects(reconcile(io),/Anderes Google Drive/);assert.equal(versions.length,count);
+currentAccount={sub:'google-user-a',email:'updated-a@example.test'};s=await reconcile(io);assert.equal(state.account.email,'updated-a@example.test');
+const count=versions.length,localBeforeSwitch=local.map(x=>({...x})),stateBeforeSwitch=JSON.stringify(state);currentAccount={sub:'google-user-b',email:'b@example.test'};let vaultRequestsBeforeSwitch=vaultCreateRequests.length;await assert.rejects(reconcile(io),/Anderes Google-Konto/);assert.equal(vaultCreateRequests.length,vaultRequestsBeforeSwitch);currentAccount={sub:'google-user-a',email:'a@example.test'};currentVault='vaultB';await assert.rejects(reconcile(io),/Anderes Google Drive/);assert.equal(vaultCreateRequests.at(-1),false);currentVault=null;await assert.rejects(reconcile(io),/Anderes Google Drive/);assert.equal(vaultCreateRequests.at(-1),false);assert.equal(versions.length,count);assert.deepEqual(local,localBeforeSwitch);assert.equal(JSON.stringify(state),stateBeforeSwitch);
 state={};io.adopt=async()=>false;await assert.rejects(reconcile(io),/abgebrochen/);
 let purgeState={vault:'vaultA',base:{r1:await hash(r('A'))}},remoteMarkers=new Set(),cloud=[
  {fileId:'a1',receipt:r('A'),hash:await hash(r('A')),parent:null},

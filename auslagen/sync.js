@@ -4,7 +4,9 @@ const CLIENT='762976540557-o8pemc9paggig25oju13gf5780f9s9m3.apps.googleuserconte
 function canonical(v){if(Array.isArray(v))return '['+v.map(canonical).join(',')+']';if(v&&typeof v==='object')return '{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';return JSON.stringify(v);}
 function valid(r){return !!r&&/^[\w-]{1,100}$/.test(r.id)&&['vendor','date','invoice','project','purpose'].every(k=>typeof r[k]==='string')&&['EUR','USD','GBP','CHF'].includes(r.currency)&&['Entwurf','Geprüft','Eingereicht','Erstattet'].includes(r.status)&&[r.net,r.tax,r.gross].every(Number.isSafeInteger)&&r.net+r.tax===r.gross&&Array.isArray(r.taxes)&&r.taxes.every(t=>t&&['rate','net','tax'].every(k=>typeof t[k]==='string'||typeof t[k]==='number'||t[k]===null))&&(!r.file||(typeof r.file.name==='string'&&typeof r.file.type==='string'&&/^image\/[a-z0-9.+-]+$|^application\/pdf$/i.test(r.file.type)&&typeof r.file.data==='string'&&r.file.data.startsWith('data:'+r.file.type+';base64,')));}
 async function reconcile(io){
- const local=await io.local.all(),state=io.state.load()||{},vault=await io.remote.vault();
+ const local=await io.local.all(),state=io.state.load()||{},account=io.account?await io.account():null;
+ if(state.account&&(!account||state.account.sub!==account.sub))throw Error('Anderes Google-Konto erkannt. Abgleich blockiert. Bitte das zuletzt verwendete Konto oder ein getrenntes Browserprofil verwenden; keine Belege wurden übertragen.');
+ const vault=await io.remote.vault(!state.vault);
  if(state.vault&&state.vault!==vault)throw Error('Anderes Google Drive erkannt. Abgleich blockiert. Bitte getrenntes Browserprofil verwenden; keine Belege wurden übertragen.');
  if(!state.vault&&local.length&&!await io.adopt(local.length))throw Error('Übernahme der lokalen Belege abgebrochen.');
  const [versions,remotePurged]=await Promise.all([io.remote.versions(),io.remote.purgedIds()]),groups=new Map();
@@ -27,6 +29,7 @@ async function reconcile(io){
   if(lh===b){await io.local.put(r.receipt);stats.downloaded++;next.base[id]=r.hash;}
   else {await io.remote.append({receipt:l,hash:lh,parent:r.hash});stats.uploaded++;next.base[id]=lh;}
  }
+ if(account)next.account=account;
  io.state.save(next);return stats;
 }
 async function purgeReceipts(io,receipts){
@@ -54,10 +57,12 @@ if(typeof module!=='undefined'&&module.exports){module.exports={reconcile,purgeR
 if(typeof document==='undefined')return;
 let token='',expiry=0,busy=false,gis;
 const KEY='auslagen-safe-sync-v2',API='https://www.googleapis.com/drive/v3',UP='https://www.googleapis.com/upload/drive/v3';
+const readSyncState=()=>JSON.parse(localStorage.getItem(KEY)||'null');
 async function hash(r){const bytes=new TextEncoder().encode(canonical(r));const b=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(b),v=>v.toString(16).padStart(2,'0')).join('');}
 function loadGoogle(){if(root.google?.accounts?.oauth2)return Promise.resolve();if(gis)return gis;gis=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=res;s.onerror=()=>{gis=null;rej(Error('Google-Skript nicht erreichbar.'));};document.head.append(s);});return gis;}
-async function authorize(){await loadGoogle();if(token&&Date.now()<expiry-60000)return;await new Promise((res,rej)=>{const c=google.accounts.oauth2.initTokenClient({client_id:root.AUSLAGEN_GOOGLE_CLIENT_ID||CLIENT,scope:'https://www.googleapis.com/auth/drive.appdata',callback:r=>{if(r.error)return rej(Error(r.error));token=r.access_token;expiry=Date.now()+Number(r.expires_in)*1000;res();},error_callback:()=>rej(Error('Anmeldung abgebrochen oder Popup blockiert. Erneut versuchen.'))});c.requestAccessToken({prompt:'select_account'});});}
-async function request(url,opt={}){const r=await fetch(url,{...opt,headers:{...opt.headers,Authorization:'Bearer '+token}});if(r.status===401){token='';throw Error('Anmeldung abgelaufen.');}if(!r.ok)throw Error('Google Drive: HTTP '+r.status);return r;}
+async function authorize(){await loadGoogle();if(token&&Date.now()<expiry-60000)return;await new Promise((res,rej)=>{const c=google.accounts.oauth2.initTokenClient({client_id:root.AUSLAGEN_GOOGLE_CLIENT_ID||CLIENT,scope:'https://www.googleapis.com/auth/drive.appdata openid email',callback:r=>{if(r.error)return rej(Error(r.error));token=r.access_token;expiry=Date.now()+Number(r.expires_in)*1000;res();},error_callback:()=>rej(Error('Anmeldung abgebrochen oder Popup blockiert. Erneut versuchen.'))});c.requestAccessToken({prompt:'select_account'});});}
+async function request(url,opt={}){const r=await fetch(url,{...opt,headers:{...opt.headers,Authorization:'Bearer '+token}});if(r.status===401){token='';throw Error('Anmeldung abgelaufen.');}if(!r.ok)throw Error('Google-Dienst: HTTP '+r.status);return r;}
+async function googleAccount(){const r=await request('https://openidconnect.googleapis.com/v1/userinfo'),account=await r.json();if(typeof account.sub!=='string'||!account.sub||typeof account.email!=='string'||account.email_verified!==true)throw Error('Google-Konto konnte nicht eindeutig bestätigt werden.');return{sub:account.sub,email:account.email};}
 async function files(){const list=[];let page='';do{const q=new URLSearchParams({spaces:'appDataFolder',fields:'nextPageToken,files(id,name)',pageSize:'1000'});if(page)q.set('pageToken',page);const j=await(await request(API+'/files?'+q)).json();list.push(...(j.files||[]));page=j.nextPageToken||'';}while(page);return list;}
 async function read(id){const r=await request(API+'/files/'+encodeURIComponent(id)+'?alt=media');const text=await r.text();if(text.length>24000000)throw Error('Cloud-Datei zu groß.');return JSON.parse(text);}
 async function create(name,data){const boundary='auslagen-'+crypto.randomUUID(),nl='\r\n';const metadata={name,parents:['appDataFolder']};const body='--'+boundary+nl+'Content-Type: application/json'+nl+nl+JSON.stringify(metadata)+nl+'--'+boundary+nl+'Content-Type: application/json'+nl+nl+JSON.stringify(data)+nl+'--'+boundary+'--';await request(UP+'/files?uploadType=multipart',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});}
@@ -87,9 +92,40 @@ async function removeReceiptCopies(receipts){
  }finally{busy=false}
 }
 root.AuslagenDrive=Object.freeze({removeReceiptCopies});
-function build(){const host=document.getElementById('export');if(!host)return;const card=document.createElement('div');card.className='card';const title=document.createElement('h2');title.textContent='Geräte-Abgleich · Entwicklung';const note=document.createElement('p');note.className='sub';note.textContent='Nur mit Testbelegen verwenden. Beim Verbinden lädt die App ein Google-Skript. Erst nach deiner Bestätigung werden lokale Belege samt Bildern im versteckten App-Ordner deines Google Drive gespeichert. Lokales Löschen löscht keine Cloud-Daten; sie werden beim nächsten Abgleich wieder geladen. Nach dem Herunterladen einer unterschriebenen PDF können die darin enthaltenen Cloud-Versionen separat und dauerhaft gelöscht werden; lokale Kopien bleiben erhalten. Konflikte werden nicht überschrieben. Keine verifizierte Erstellerzuordnung.';const btn=document.createElement('button');btn.type='button';btn.textContent='Mit Google verbinden und abgleichen';const off=document.createElement('button');off.type='button';off.className='secondary';off.textContent='Verbindung trennen';const status=document.createElement('p');status.className='sub';status.setAttribute('role','status');const actions=document.createElement('div');actions.className='actions';actions.append(btn,off);card.append(title,note,actions,status);host.prepend(card);
- btn.onclick=async()=>{if(busy)return;if(!confirm('Google-Anmeldung laden und Testbelege mit deinem Google Drive abgleichen? Auf jedem Gerät dasselbe Konto wählen.'))return;busy=true;btn.disabled=off.disabled=true;try{await authorize();status.textContent='Drive prüfen und Testbelege abgleichen …';const result=await reconcile({local:{all:()=>dbAll(),put:r=>dbPut([r])},remote,hash,state:{load:()=>JSON.parse(localStorage.getItem(KEY)||'null'),save:s=>localStorage.setItem(KEY,JSON.stringify(s))},adopt:async n=>confirm(n+' lokale Belege gehören zu diesem Google Drive und dürfen hochgeladen werden?')});db=await dbAll();render();status.textContent=result.uploaded+' hochgeladen, '+result.downloaded+' geladen. Konflikte: '+result.conflicts.length+(result.conflicts.length?' – nicht überschrieben; Auflösung noch nicht implementiert.':'');}catch(e){status.textContent='Abgleich gestoppt: '+e.message;}finally{busy=false;btn.disabled=off.disabled=false;}};
- off.onclick=()=>{if(busy)return;if(token&&root.google?.accounts?.oauth2)google.accounts.oauth2.revoke(token,()=>{});token='';expiry=0;status.textContent='Getrennt. Die Drive-Bindung bleibt zum Schutz vor Kontovermischung erhalten. Lokale und Cloud-Belege wurden nicht gelöscht.';};
+function build(){
+ const host=document.getElementById('capture');if(!host)return;
+ const card=document.createElement('div');card.className='card';
+ const title=document.createElement('h2');title.textContent='Google Drive';
+ const note=document.createElement('p');note.className='sub';note.textContent='Optionaler Abgleich deiner Testbelege zwischen eigenen Geräten.';
+ const identity=document.createElement('p');identity.className='sub';identity.setAttribute('role','status');
+ try{const saved=readSyncState();identity.textContent=saved?.account?.email?'Zuletzt verbunden: '+saved.account.email+' (nicht angemeldet).':'Kein Konto verbunden.';}catch(error){identity.textContent='Kontoinfo nicht lesbar: '+error.message;}
+ const btn=document.createElement('button');btn.type='button';btn.textContent='Mit Google verbinden und abgleichen';
+ const off=document.createElement('button');off.type='button';off.className='secondary';off.textContent='Verbindung trennen';
+ const status=document.createElement('p');status.className='sub';status.setAttribute('role','status');
+ const actions=document.createElement('div');actions.className='actions';actions.append(btn,off);card.append(title,note,identity,actions,status);host.prepend(card);
+ const dialog=document.createElement('dialog');dialog.className='sync-dialog';dialog.setAttribute('aria-labelledby','sync-dialog-title');
+ const dialogTitle=document.createElement('h2');dialogTitle.id='sync-dialog-title';dialogTitle.textContent='Google Drive verbinden?';
+ const dialogNote=document.createElement('p');dialogNote.id='sync-dialog-description';dialogNote.textContent='Optionaler Abgleich zwischen deinen Geräten. Belege werden direkt in dein Google Drive übertragen. Nur fiktive Testdaten – diese Website ist öffentlich.';dialog.setAttribute('aria-describedby',dialogNote.id);
+ const dialogActions=document.createElement('div');dialogActions.className='actions';
+ const later=document.createElement('button');later.type='button';later.className='secondary';later.textContent='Später';
+ const connect=document.createElement('button');connect.type='button';connect.textContent='Jetzt verbinden';
+ dialogActions.append(later,connect);dialog.append(dialogTitle,dialogNote,dialogActions);document.body.append(dialog);
+ const connectDrive=async requireConfirm=>{
+  if(busy)return;
+  if(requireConfirm&&!confirm('Google-Anmeldung laden und Testbelege direkt mit deinem Google Drive abgleichen?'))return;
+  busy=true;btn.disabled=off.disabled=connect.disabled=later.disabled=true;
+  try{
+   await authorize();const account=await googleAccount();status.textContent='Drive-Konto '+account.email+' prüfen und Testbelege abgleichen …';
+   const result=await reconcile({account:()=>account,local:{all:()=>dbAll(),put:r=>dbPut([r])},remote,hash,state:{load:readSyncState,save:s=>localStorage.setItem(KEY,JSON.stringify(s))},adopt:async n=>confirm(n+' lokale Belege gehören zu diesem Google Drive und dürfen hochgeladen werden?')});
+   identity.textContent='Zuletzt verbunden: '+account.email+' (nicht angemeldet).';db=await dbAll();render();
+   status.textContent=result.uploaded+' hochgeladen, '+result.downloaded+' geladen. Konflikte: '+result.conflicts.length+(result.conflicts.length?' – nicht überschrieben; Auflösung noch nicht implementiert.':'');
+  }catch(e){status.textContent='Abgleich gestoppt: '+e.message;}
+  finally{busy=false;btn.disabled=off.disabled=connect.disabled=later.disabled=false;}
+ };
+ btn.onclick=()=>connectDrive(true);connect.onclick=()=>{dialog.close();connectDrive(false)};later.onclick=()=>dialog.close();
+ dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+ off.onclick=()=>{if(busy)return;if(token&&root.google?.accounts?.oauth2)root.google.accounts.oauth2.revoke(token,()=>{});token='';expiry=0;status.textContent='Getrennt. Die Drive-Bindung bleibt zum Schutz vor Kontovermischung erhalten. Lokale und Cloud-Belege wurden nicht gelöscht.';};
+ if(typeof dialog.showModal==='function')dialog.showModal();else status.textContent='Dieser Browser unterstützt den Google-Info-Dialog nicht.';
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',build);else build();
 })(typeof self!=='undefined'?self:this);

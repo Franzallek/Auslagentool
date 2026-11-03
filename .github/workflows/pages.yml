@@ -1,40 +1,104 @@
-name: Sync development checks - no deployment
+name: Prüfen und auf main veröffentlichen
 
 on:
   push:
-    branches: [main, feature/google-drive-sync]
+    branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
-      - name: Syntax checks
+          node-version: "22"
+      - name: Syntax, Tests und ausgelieferte Einstiegsseite
         run: |
           node --check auslagen/parser.js
           node --check auslagen/sw.js
           node --check auslagen/sync.js
           node --check auslagen/sync-config.js
           node --check auslagen/sync-plan.js
-          node --check auslagen/sync-plan.test.cjs
           node --check auslagen/report.js
+          node --check auslagen/receipt-pdf.js
+          node --check auslagen/pdfimport.js
           node scripts/check-inline.cjs index.html
-      - name: Existing tests
-        run: |
-          node auslagen/parser.test.cjs
+          node scripts/check-inline.cjs auslagen/index.html
+          node auslagen/parser.test.cjs > /dev/null
           node auslagen/sync.test.cjs
-      - name: Conservative sync planner regression tests
-        run: node auslagen/sync-plan.test.cjs
-      - name: Reimbursement report tests
-        run: node auslagen/report.test.cjs
-
-# Deliberately no deploy job. Go-live requires a separate reviewed change.
+          node auslagen/sync-plan.test.cjs
+          node auslagen/report.test.cjs
+          node auslagen/receipt-pdf.test.cjs
+          node auslagen/pdfimport.test.cjs
+      - name: Tesseract-Integrität und Schlüsselmuster prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in tesseract-core.wasm.js tesseract-core-simd.wasm.js tesseract-core-lstm.wasm.js tesseract-core-simd-lstm.wasm.js; do
+            curl --fail --silent --show-error --location --retry 2 --connect-timeout 15 --max-time 90 "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/$name" -o "$RUNNER_TEMP/$name"
+            cmp --silent "auslagen/vendor/core/$name" "$RUNNER_TEMP/$name" || { echo "Integritätsfehler: $name"; exit 1; }
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+          verified = {
+              'auslagen/vendor/core/tesseract-core.wasm.js',
+              'auslagen/vendor/core/tesseract-core-simd.wasm.js',
+              'auslagen/vendor/core/tesseract-core-lstm.wasm.js',
+              'auslagen/vendor/core/tesseract-core-simd-lstm.wasm.js',
+          }
+          pattern = re.compile(
+              rb'-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----|'
+              rb'GOCSPX-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|'
+              rb'gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|'
+              rb'sk_live_[A-Za-z0-9]{20,}'
+          )
+          paths = [Path('index.html')] + sorted(Path('auslagen').rglob('*'))
+          bad = False
+          for path in paths:
+              if not path.is_file() or path.suffix not in {'.html', '.js', '.mjs', '.cjs', '.webmanifest'}:
+                  continue
+              if path.as_posix() in verified:
+                  continue
+              if pattern.search(path.read_bytes()):
+                  print('Verdächtiger Treffer: ' + path.as_posix())
+                  bad = True
+          sys.exit(1 if bad else 0)
+          PY
+      - name: Verteilungsartefakt zusammenstellen
+        run: |
+          mkdir _site
+          cp -r auslagen/. _site/
+          cp index.html _site/index.html
+          cp -r vendor _site/vendor
+          rm -f _site/*.test.cjs _site/setup-vendor.mjs _site/setup-vendor.sh _site/_headers _site/README.md
+          for asset in sync-config.js sync.js; do
+            test -s "_site/$asset" || { echo "Fehlendes App-Asset: $asset"; exit 1; }
+            grep -Fq "src=\"$asset\"" _site/index.html || { echo "App-Einstieg lädt $asset nicht."; exit 1; }
+          done
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v5
+        id: deployment
